@@ -106,6 +106,9 @@
 
 (defconst git-islands-graph-lane-width 14 "Pixels between lanes.")
 
+(defconst git-islands-graph-padding 8
+  "Pixels between the graph's last lane and the subject after it.")
+
 (defvar git-islands-graph-cache (make-hash-table :test #'equal))
 
 (defun git-islands-graph-color (index)
@@ -121,7 +124,7 @@ BACKGROUND rings the dot; HEAD draws it hollow, as the checked-out commit."
         (puthash
          key
          (let* ((lane git-islands-graph-lane-width)
-                (width (* lane (max columns 1)))
+                (width (+ (* lane (max columns 1)) git-islands-graph-padding))
                 (svg (svg-create width height))
                 (x (lambda (i) (+ (* i lane) (/ lane 2.0))))
                 (y (lambda (level) (* level (/ height 2.0)))))

@@ -313,7 +313,9 @@ Nil selects the commit at point alone.")
         (with-current-buffer (get-buffer-create name)
           (setq default-directory root)
           (git-islands-log-mode)
-          (setq git-islands-log-root root)
+          (setq git-islands-log-root root
+                ;; The current branch, as the branches pane first selects.
+                git-islands-log-filters (list :branch "HEAD"))
           (git-islands-log-reload)
           (current-buffer)))))
 
@@ -528,7 +530,9 @@ and shorten its subject to fit before them."
       (let* ((subject-end (or (text-property-not-all subject-start end 'git-islands-subject t) end))
              (subject (buffer-substring-no-properties subject-start subject-end))
              (graphp (get-text-property start 'git-islands-graph))
-             (graph (if graphp (* git-islands-log-columns git-islands-graph-lane-width) 0))
+             (graph (if graphp (+ (* git-islands-log-columns git-islands-graph-lane-width)
+                                  git-islands-graph-padding)
+                      0))
              (columns (cond ((memq 'author shown) (+ git-islands-log-author-width git-islands-log-date-width))
                             ((memq 'date shown) git-islands-log-date-width)
                             (t 0)))
@@ -767,6 +771,7 @@ open, and the open filter's own chip closes it, so popups never stack."
                                            (unless (and (stringp value) (string-empty-p value))
                                              value)))
   (git-islands-log-reload)
+  (git-islands-refs-follow git-islands-log-root)
   (force-mode-line-update))
 
 (defun git-islands-log-filter-branch (&optional branch)
@@ -823,6 +828,7 @@ open, and the open filter's own chip closes it, so popups never stack."
   (interactive)
   (setq git-islands-log-filters nil)
   (git-islands-log-reload)
+  (git-islands-refs-follow git-islands-log-root)
   (force-mode-line-update))
 
 (defun git-islands-log-chip (label value action)
@@ -1103,6 +1109,10 @@ A file keeps the status its first change gave it, unless it is gone."
                    (or (git-islands-string git-islands-details-root "log" "-1" "--format=%B"
                                            (git-islands-commit-hash commit))
                        "")))
+         ;; Lines broken for 72 columns join again, so the pane, narrower or
+         ;; wider, breaks them for itself; blank lines and list items stay.
+         (message (replace-regexp-in-string
+                   "\\([^\n]\\)\n[ \t]*\\([^-*\n[:space:]]\\)" "\\1 \\2" message))
          ;; The subject is the first paragraph, as Git takes it.
          (end (or (string-search "\n\n" message) (length message))))
     (concat (propertize (substring message 0 end) 'face 'git-islands-group)
@@ -1274,8 +1284,8 @@ COMMIT can be a list of commits, newest first, when several are selected."
     (erase-buffer)
     (setq magit-root-section nil)
     (magit-insert-section (git-islands-refs)
-                          (git-islands-refs-row 0 "All branches" nil 'default)
-                          (git-islands-refs-row 0 "HEAD (Current Branch)" "HEAD" 'default)
+                          (git-islands-refs-row 0 "All branches" nil)
+                          (git-islands-refs-row 0 "HEAD (Current Branch)" "HEAD")
                           (dolist (group `(("Local" . ,(seq-remove #'git-islands-branch-remote branches))
                                            ("Remote" . ,(seq-filter #'git-islands-branch-remote branches))))
                             (when (cdr group)
@@ -1285,11 +1295,36 @@ COMMIT can be a list of commits, newest first, when several are selected."
                                                     (dolist (branch (cdr group))
                                                       (magit-insert-section (git-islands-ref (git-islands-branch-name branch))
                                                                             (git-islands-refs-row 1 (git-islands-branch-name branch) (git-islands-branch-name branch)
-                                                                                                  (if (git-islands-branch-current branch) 'git-islands-ref-head 'default))))))))
+                                                                                                  (when (git-islands-branch-current branch) 'git-islands-ref-head))))))))
     (git-islands-tree-draw-chevrons)
-    (goto-char (point-min))
     (git-islands-fit-rows)
+    (git-islands-refs-select)))
+
+(defun git-islands-refs-select ()
+  "Select the row of the branch the log is filtered to, or All branches."
+  (let* ((log (get-buffer (format " *git log: %s*" (abbreviate-file-name git-islands-refs-root))))
+         (branch (if log
+                     (plist-get (buffer-local-value 'git-islands-log-filters log) :branch)
+                   "HEAD"))
+         (want (or branch 'all))
+         (position (or (save-excursion
+                         (goto-char (point-min))
+                         (catch 'found
+                           (while (not (eobp))
+                             (when (equal (get-text-property (pos-bol) 'git-islands-ref) want)
+                               (throw 'found (point)))
+                             (forward-line 1))))
+                       (point-min))))
+    (goto-char position)
+    (dolist (window (get-buffer-window-list (current-buffer) nil t))
+      (set-window-point window position))
     (git-islands-highlight)))
+
+(defun git-islands-refs-follow (root)
+  "Select in ROOT's branches pane the branch its log is now filtered to."
+  (when-let* ((refs (get-buffer (format " *git branches: %s*" (abbreviate-file-name root)))))
+    (with-current-buffer refs
+      (git-islands-refs-select))))
 
 (defun git-islands-refs-filter ()
   "Filter the log to the branch at point."
@@ -1323,22 +1358,71 @@ COMMIT can be a list of commits, newest first, when several are selected."
               (with-current-buffer (window-buffer window) (derived-mode-p 'git-islands-log-mode)))
             (window-list frame 'no-minibuffer)))
 
+(defvar git-islands-log-refs-width '(0.12 170 . 240)
+  "Width of the branches pane: (FRACTION MIN . MAX), FRACTION of the frame's
+width in pixels, kept between MIN and MAX pixels.")
+
+(defvar git-islands-log-details-width '(0.22 260 . 400)
+  "Width of the details pane, as `git-islands-log-refs-width' gives it.")
+
+(defun git-islands-log-pane-pixels (width)
+  "Return the pixels of a pane WIDTH, a (FRACTION MIN . MAX), wide."
+  (pcase-let ((`(,fraction ,min . ,max) width))
+    (round (max min (min max (* fraction (frame-pixel-width)))))))
+
+(defun git-islands-log-pane-columns (width)
+  "Return the columns of a pane WIDTH, a (FRACTION MIN . MAX), wide."
+  (max 10 (round (git-islands-log-pane-pixels width) (frame-char-width))))
+
+(defvar git-islands-log--fitting nil "Non-nil while the panes are being resized.")
+
+(defun git-islands-log-fit-panes (frame)
+  "Give FRAME's branches and details panes the widths they keep.
+Splitting the bottom side windows loses the widths asked for, and a
+wider frame would share its width out; the table takes what is left."
+  (let ((git-islands-log--fitting t))
+    (dolist (pane (git-islands-log-windows frame))
+      (when-let* ((width (window-parameter pane 'git-islands-pane-width)))
+        (ignore-errors
+          (window-resize pane (- width (window-pixel-width pane)) t t t))))
+    (set-frame-parameter frame 'git-islands-log-width (frame-pixel-width frame))))
+
+(defun git-islands-log-keep-panes (frame)
+  "Keep FRAME's side panes as wide as they were after its width changed.
+When the frame kept its width, a pane changed by a drag keeps its new width."
+  (unless git-islands-log--fitting
+    (when (git-islands-log-window frame)
+      (if (eql (frame-parameter frame 'git-islands-log-width) (frame-pixel-width frame))
+          (dolist (pane (git-islands-log-windows frame))
+            (when (window-parameter pane 'git-islands-pane-width)
+              (set-window-parameter pane 'git-islands-pane-width (window-pixel-width pane))))
+        (git-islands-log-fit-panes frame)))))
+
+(add-hook 'window-size-change-functions #'git-islands-log-keep-panes)
+
 (defun git-islands-log-show (root)
   "Show ROOT's Git tool window along the frame's bottom; return the table's window."
   (let* ((log (git-islands-log-buffer root))
          (window (display-buffer-in-side-window
                   log '((side . bottom) (slot . 0) (window-height . 0.38) (dedicated . t)
                         (window-parameters (no-delete-other-windows . t))))))
-    (display-buffer-in-side-window
-     (git-islands-refs-buffer root)
-     `((side . bottom) (slot . -1) (dedicated . t)
-       (window-width . ,(max 20 (round 240 (frame-char-width))))
-       (window-parameters (no-other-window . t) (no-delete-other-windows . t))))
-    (display-buffer-in-side-window
-     (git-islands-details-buffer root)
-     `((side . bottom) (slot . 1) (dedicated . t)
-       (window-width . ,(max 30 (round 320 (frame-char-width))))
-       (window-parameters (no-delete-other-windows . t))))
+    (let ((refs (display-buffer-in-side-window
+                 (git-islands-refs-buffer root)
+                 `((side . bottom) (slot . -1) (dedicated . t)
+                   (window-width . ,(git-islands-log-pane-columns git-islands-log-refs-width))
+                   (window-parameters (no-other-window . t) (no-delete-other-windows . t)))))
+          (details (display-buffer-in-side-window
+                    (git-islands-details-buffer root)
+                    `((side . bottom) (slot . 1) (dedicated . t)
+                      (window-width . ,(git-islands-log-pane-columns git-islands-log-details-width))
+                      (window-parameters (no-delete-other-windows . t))))))
+      (when (window-live-p refs)
+        (set-window-parameter refs 'git-islands-pane-width
+                              (git-islands-log-pane-pixels git-islands-log-refs-width)))
+      (when (window-live-p details)
+        (set-window-parameter details 'git-islands-pane-width
+                              (git-islands-log-pane-pixels git-islands-log-details-width))))
+    (git-islands-log-fit-panes (selected-frame))
     ;; A pixel of right fringe: without one
     ;; a selected row, which fills the window, would count as cut.
     (dolist (pane (git-islands-log-windows))
