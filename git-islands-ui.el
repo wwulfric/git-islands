@@ -236,7 +236,8 @@ in the clicked window."
                   (interactive "e")
                   (select-window (posn-window (event-start event)))
                   (if (commandp action)
-                      (call-interactively action)
+                      ;; The command clicked, not this lambda, is what ran.
+                      (call-interactively (setq this-command action))
                     (funcall action event))))
     (define-key map [header-line mouse-1] #'ignore)
     (propertize (apply #'concat strings)
