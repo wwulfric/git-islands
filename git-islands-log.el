@@ -1358,11 +1358,11 @@ COMMIT can be a list of commits, newest first, when several are selected."
               (with-current-buffer (window-buffer window) (derived-mode-p 'git-islands-log-mode)))
             (window-list frame 'no-minibuffer)))
 
-(defvar git-islands-log-refs-width '(0.13 180 . 340)
+(defvar git-islands-log-refs-width '(0.15 180 . 400)
   "Width of the branches pane: (FRACTION MIN . MAX), FRACTION of the frame's
 width in pixels, kept between MIN and MAX pixels.")
 
-(defvar git-islands-log-details-width '(0.25 280 . 600)
+(defvar git-islands-log-details-width '(0.28 280 . 720)
   "Width of the details pane, as `git-islands-log-refs-width' gives it.")
 
 (defun git-islands-log-pane-pixels (width)
