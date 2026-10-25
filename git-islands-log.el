@@ -1358,11 +1358,11 @@ COMMIT can be a list of commits, newest first, when several are selected."
               (with-current-buffer (window-buffer window) (derived-mode-p 'git-islands-log-mode)))
             (window-list frame 'no-minibuffer)))
 
-(defvar git-islands-log-refs-width '(0.12 170 . 240)
+(defvar git-islands-log-refs-width '(0.13 180 . 340)
   "Width of the branches pane: (FRACTION MIN . MAX), FRACTION of the frame's
 width in pixels, kept between MIN and MAX pixels.")
 
-(defvar git-islands-log-details-width '(0.22 260 . 400)
+(defvar git-islands-log-details-width '(0.25 280 . 600)
   "Width of the details pane, as `git-islands-log-refs-width' gives it.")
 
 (defun git-islands-log-pane-pixels (width)
@@ -1385,6 +1385,13 @@ wider frame would share its width out; the table takes what is left."
       (when-let* ((width (window-parameter pane 'git-islands-pane-width)))
         (ignore-errors
           (window-resize pane (- width (window-pixel-width pane)) t t t))))
+    ;; The panes fitted their rows to the widths they had before: a change
+    ;; made here, inside a size change, runs no size hooks again.
+    (dolist (pane (git-islands-log-windows frame))
+      (with-current-buffer (window-buffer pane)
+        (if (derived-mode-p 'git-islands-log-mode)
+            (jit-lock-refontify)
+          (git-islands-fit-rows pane))))
     (set-frame-parameter frame 'git-islands-log-width (frame-pixel-width frame))))
 
 (defun git-islands-log-keep-panes (frame)
