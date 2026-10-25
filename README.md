@@ -1,5 +1,7 @@
 # git-islands
 
+English | [简体中文](README.zh-CN.md)
+
 IntelliJ-style Git tool windows for Emacs, drawn in Emacs and driven by
 [Magit](https://magit.vc).
 
@@ -34,7 +36,7 @@ With `package-vc` (Emacs 29), once the repository is published at that address:
 Or from a checkout:
 
 ```elisp
-(add-to-list 'load-path "~/Projects/git-islands")
+(add-to-list 'load-path "/path/to/git-islands")
 (require 'git-islands)
 ```
 
