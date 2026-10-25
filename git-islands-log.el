@@ -9,7 +9,7 @@
 ;; commit's changed files and message on the right.  The header holds
 ;; IntelliJ's filters: branch, user, date, path and text.
 ;;
-;; Commits are read a page at a time with `git log --topo-order' and drawn
+;; Commits are read a page at a time with `git log --date-order' and drawn
 ;; as they arrive; scrolling near the end reads the next page.  Rows are
 ;; plain text with their graph image and the fitted subject added only
 ;; where they are shown, so long histories stay cheap.
@@ -17,7 +17,9 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'seq)
 (require 'subr-x)
+(require 'svg)
 (require 'jit-lock)
 (require 'magit-section)
 (require 'git-islands-core)
@@ -66,39 +68,142 @@
 
 ;;;; Faces
 
-(defface git-islands-ref-label '((t :height 0.9))
-  "Ref labels before a subject: a size below it, so the subject leads."
+(defface git-islands-ref-label '((t :inherit git-islands-dim :height 0.9))
+  "Names of the branches and tags at a commit: quiet, a size below the subject."
   :group 'git-islands)
 
 (defface git-islands-ref-head
   '((((background dark)) :foreground "#E5A33F") (t :foreground "#B87A00"))
-  "The checked-out branch in the log."
+  "Icon of the checked-out branch."
   :group 'git-islands)
 
 (defface git-islands-ref-local
   '((((background dark)) :foreground "#73BD79") (t :foreground "#1F7A35"))
-  "Local branches in the log."
+  "Icon of local branches."
   :group 'git-islands)
 
 (defface git-islands-ref-remote
   '((((background dark)) :foreground "#B08FDB") (t :foreground "#7A4FB8"))
-  "Remote branches in the log."
+  "Icon of remote branches."
   :group 'git-islands)
 
 (defface git-islands-ref-tag
-  '((((background dark)) :foreground "#4FB5C9") (t :foreground "#00677D"))
-  "Tags in the log."
+  '((((background dark)) :foreground "#868A91") (t :foreground "#6C707E"))
+  "Icon of tags."
   :group 'git-islands)
 
-(defun git-islands-log-ref-label (ref)
-  "Return REF, as `%D' lists it, as a colored label."
-  (pcase-let ((`(,name . ,face)
-               (cond ((string-prefix-p "HEAD -> " ref) (cons (substring ref 8) 'git-islands-ref-head))
-                     ((equal ref "HEAD") (cons ref 'git-islands-ref-head))
-                     ((string-prefix-p "tag: " ref) (cons (substring ref 5) 'git-islands-ref-tag))
-                     ((string-search "/" ref) (cons ref 'git-islands-ref-remote))
-                     (t (cons ref 'git-islands-ref-local)))))
-    (propertize name 'face (list face 'git-islands-ref-label))))
+(defconst git-islands-log-ref-gap 16
+  "Pixels between a row's labels and the author's column.")
+
+(defvar git-islands-log-ref-limit 3
+  "Most branch labels a row shows; the rest are counted, as +N.")
+
+(defvar git-islands-log-ref-width 32
+  "Most characters of a row's branch label; a longer one ends in an ellipsis.")
+
+(defun git-islands-log-refs-parse (refs)
+  "Return REFS, full names as `git log --decorate=full' lists them, as labels.
+Each label is (KIND TEXT FACES).  KIND is `head', `local', `remote' or
+`tag'.  As in IntelliJ, a local branch takes in the remote branches of
+its name at the same commit, as \"origin & main\", and FACES color its
+icon, the remotes' first; every tag is in one label; remotes' HEAD is
+left out."
+  (let (head detached locals remotes tags)
+    (dolist (ref refs)
+      (cond ((string-prefix-p "HEAD -> refs/heads/" ref)
+             (setq head (substring ref 19)))
+            ((equal ref "HEAD") (setq detached t))
+            ((string-prefix-p "tag: refs/tags/" ref) (push (substring ref 15) tags))
+            ((string-prefix-p "refs/heads/" ref) (push (substring ref 11) locals))
+            ((string-match "\\`refs/remotes/\\([^/]+\\)/\\(.+\\)\\'" ref)
+             (unless (equal (match-string 2 ref) "HEAD")
+               (push (cons (match-string 2 ref) (match-string 1 ref)) remotes)))))
+    (setq remotes (nreverse remotes))
+    (append
+     (when detached (list (list 'head "HEAD" '(git-islands-ref-head))))
+     (mapcar (lambda (local)
+               (let ((own (seq-filter (lambda (remote) (equal (car remote) local)) remotes)))
+                 (setq remotes (seq-difference remotes own))
+                 (list (if (equal local head) 'head 'local)
+                       (mapconcat #'identity (append (mapcar #'cdr own) (list local)) " & ")
+                       (append (make-list (length own) 'git-islands-ref-remote)
+                               (list (if (equal local head) 'git-islands-ref-head
+                                       'git-islands-ref-local))))))
+             (append (and head (list head)) (nreverse locals)))
+     (mapcar (lambda (remote)
+               (list 'remote (concat (cdr remote) "/" (car remote)) '(git-islands-ref-remote)))
+             remotes)
+     (when tags
+       (list (list 'tag (string-join (nreverse tags) ", ") '(git-islands-ref-tag)))))))
+
+(defvar git-islands-log-ref-icons (make-hash-table :test #'equal)
+  "Label icons by their colors, kind and height.")
+
+(defun git-islands-log-ref-icon (faces tag)
+  "Return the label icon in FACES' colors, the last one in front.
+TAG punches a hole in it, as in a price tag.
+Several colors draw as many labels, each behind the next, as IntelliJ
+draws a branch with its remote."
+  (let* ((colors (mapcar (lambda (face) (git-islands-face-color face :foreground "#6C707E"))
+                         faces))
+         (height (min 16 (frame-char-height)))
+         (key (list colors tag height)))
+    (or (gethash key git-islands-log-ref-icons)
+        (puthash
+         key
+         (let* ((step 4)
+                (width (+ 12 (* step (1- (length colors)))))
+                (svg (svg-create width height))
+                (top (/ (- height 10) 2.0)))
+           ;; The back label first, at the right; the front one ends at the left.
+           (seq-do-indexed
+            (lambda (color index)
+              (let ((x (* step (- (length colors) 1 index))))
+                (svg-polygon svg (list (cons (+ x 1) (+ top 5)) (cons (+ x 4.5) top)
+                                       (cons (+ x 11) top) (cons (+ x 11) (+ top 10))
+                                       (cons (+ x 4.5) (+ top 10)))
+                             :fill "none" :stroke color :stroke-width 1.2
+                             :stroke-linejoin "round")
+                (when tag
+                  (svg-circle svg (+ x 5.6) (+ top 5) 1 :fill color))))
+            colors)
+           (svg-image svg :ascent 'center))
+         git-islands-log-ref-icons))))
+
+(defun git-islands-log-ref-labels (refs &optional full)
+  "Return REFS, as `git log --decorate=full' lists them, as labels to show.
+In a row, tags show their icon alone and long or many branches are cut
+short; with FULL every name shows in full, as the details pane does."
+  (let* ((labels (git-islands-log-refs-parse refs))
+         (branches (seq-remove (lambda (label) (eq (car label) 'tag)) labels))
+         (tags (seq-filter (lambda (label) (eq (car label) 'tag)) labels))
+         (shown (if full branches (seq-take branches git-islands-log-ref-limit)))
+         (hidden (- (length branches) (length shown)))
+         (gap (git-islands-space 10)))
+    (mapconcat
+     #'identity
+     (append
+      (mapcar (pcase-lambda (`(,_ ,text ,faces))
+                (propertize
+                 (concat (propertize " " 'display (git-islands-log-ref-icon faces nil))
+                         (git-islands-space 4)
+                         (propertize (if full text
+                                       (truncate-string-to-width text git-islands-log-ref-width
+                                                                 nil nil "…"))
+                                     'face 'git-islands-ref-label))
+                 'help-echo text))
+              shown)
+      (when (> hidden 0)
+        (list (propertize (format "+%d" hidden) 'face 'git-islands-ref-label
+                          'help-echo (mapconcat #'cadr (nthcdr (length shown) branches) "\n"))))
+      (mapcar (pcase-lambda (`(,_ ,text ,faces))
+                (concat (propertize " " 'display (git-islands-log-ref-icon faces t)
+                                    'help-echo text)
+                        (when full
+                          (concat (git-islands-space 4)
+                                  (propertize text 'face 'git-islands-ref-label)))))
+              tags))
+     gap)))
 
 ;;;; Table buffer
 
@@ -197,7 +302,10 @@ Filtering by user or text leaves gaps the graph cannot join."
   "Return the arguments of `git log' reading a page after SKIP commits."
   (let ((filters git-islands-log-filters))
     (append
-     (list "log" "--topo-order" (concat "--format=" git-islands-log-format)
+     ;; By date, as IntelliJ's log, so branches made lately show near the
+     ;; top; children still come before their parents.  Full ref names
+     ;; tell local branches from remote ones.
+     (list "log" "--date-order" "--decorate=full" (concat "--format=" git-islands-log-format)
            "-n" (number-to-string git-islands-log-page) "--skip" (number-to-string skip))
      (when-let* ((user (plist-get filters :user))) (list (concat "--author=" user)))
      (when-let* ((text (plist-get filters :text)))
@@ -290,9 +398,13 @@ Filtering by user or text leaves gaps the graph cannot join."
   "Insert COMMIT's row at point."
   (let ((start (point)))
     (insert (if (git-islands-commit-row commit) (propertize " " 'git-islands-graph t) "")
-            (mapconcat (lambda (ref) (concat (git-islands-log-ref-label ref) "  "))
-                       (git-islands-commit-refs commit) "")
             (propertize (git-islands-commit-subject commit) 'git-islands-subject t)
+            ;; Branches and tags at the subject column's end, as in IntelliJ:
+            ;; a space placed where they start, then the labels.
+            (if-let* ((refs (git-islands-commit-refs commit)))
+                (concat (propertize " " 'git-islands-refs-align t)
+                        (propertize (git-islands-log-ref-labels refs) 'git-islands-refs t))
+              "")
             (git-islands-log-column
              'author (+ git-islands-log-author-width git-islands-log-date-width)
              (truncate-string-to-width (git-islands-commit-author commit) 18 nil nil "…"))
@@ -392,16 +504,23 @@ and shorten its subject to fit before them."
       (let* ((subject-end (or (text-property-not-all subject-start end 'git-islands-subject t) end))
              (subject (buffer-substring-no-properties subject-start subject-end))
              (graphp (get-text-property start 'git-islands-graph))
-             ;; The labels before the subject; the graph is measured apart.
-             ;; With their faces: ref labels are a size smaller.
-             (before (string-pixel-width
-                      (buffer-substring (if graphp (1+ start) start) subject-start)
-                      (current-buffer)))
              (graph (if graphp (* git-islands-log-columns git-islands-graph-lane-width) 0))
              (columns (cond ((memq 'author shown) (+ git-islands-log-author-width git-islands-log-date-width))
                             ((memq 'date shown) git-islands-log-date-width)
                             (t 0)))
-             (room (- width git-islands-row-inset graph before columns 16)))
+             (align (text-property-any subject-end end 'git-islands-refs-align t))
+             (refs-end (and align (or (next-single-property-change (1+ align) 'git-islands-refs nil end)
+                                      end)))
+             ;; The labels, measured with their icons and faces, end a gap
+             ;; before the author's column, and the subject a gap before them.
+             (labels (if align (string-pixel-width (buffer-substring (1+ align) refs-end)
+                                                   (current-buffer))
+                       0))
+             (refs (if align (+ labels git-islands-log-ref-gap) 0))
+             (room (- width git-islands-row-inset graph columns refs 16)))
+        (when align
+          (put-text-property align (1+ align) 'display
+                             `(space :align-to (- right (,(+ columns refs))))))
         (remove-text-properties subject-start subject-end '(display nil))
         (when (> (string-pixel-width subject (current-buffer)) room)
           (put-text-property subject-start subject-end 'display
@@ -1016,8 +1135,7 @@ COMMIT can be a list of commits, newest first, when several are selected."
                                                   (propertize (substring (git-islands-commit-hash commit) 0 8)
                                                               'face 'git-islands-dim))
                             (when (git-islands-commit-refs commit)
-                              (git-islands-tree-row 0 (mapconcat #'git-islands-log-ref-label (git-islands-commit-refs commit)
-                                                                 "  "))))))
+                              (git-islands-tree-row 0 (git-islands-log-ref-labels (git-islands-commit-refs commit) t))))))
     (git-islands-tree-draw-chevrons)
     (goto-char (point-min))
     (git-islands-fit-rows)

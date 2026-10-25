@@ -281,13 +281,34 @@
 (ert-deftest git-islands-log-parse-and-format ()
   (let ((commit (git-islands-log-parse-record
                  (concat "\nabc\x1f\ p1 p2\x1f\ Ada\x1f\ ada@example.invalid\x1f\ 1700000000\x1f\ "
-                         "HEAD -> main, origin/main, tag: v1\x1f\ Fix a\x1f\ b"))))
+                         "HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1"
+                         "\x1f\ Fix a\x1f\ b"))))
     (should (equal (git-islands-commit-hash commit) "abc"))
     (should (equal (git-islands-commit-parents commit) '("p1" "p2")))
-    (should (equal (git-islands-commit-refs commit) '("HEAD -> main" "origin/main" "tag: v1")))
-    (should (equal (git-islands-commit-subject commit) "Fix a\x1f\ b"))
-    (should (eq (car (get-text-property 0 'face (git-islands-log-ref-label "HEAD -> main"))) 'git-islands-ref-head))
-    (should (eq (car (get-text-property 0 'face (git-islands-log-ref-label "origin/main"))) 'git-islands-ref-remote)))
+    (should (equal (git-islands-commit-refs commit)
+                   '("HEAD -> refs/heads/main" "refs/remotes/origin/main" "tag: refs/tags/v1")))
+    (should (equal (git-islands-commit-subject commit) "Fix a\x1f\ b")))
+  ;; A branch takes in its remote at the same commit; tags share one label;
+  ;; a local branch with a slash stays local; remotes' HEAD is left out.
+  (should (equal (git-islands-log-refs-parse
+                  '("HEAD -> refs/heads/main" "refs/remotes/origin/main" "refs/remotes/origin/HEAD"
+                    "refs/heads/feature/x" "refs/remotes/upstream/dev" "tag: refs/tags/v1"
+                    "tag: refs/tags/v2"))
+                 '((head "origin & main" (git-islands-ref-remote git-islands-ref-head))
+                   (local "feature/x" (git-islands-ref-local))
+                   (remote "upstream/dev" (git-islands-ref-remote))
+                   (tag "v1, v2" (git-islands-ref-tag)))))
+  (should (equal (git-islands-log-refs-parse '("HEAD" "refs/heads/main"))
+                 '((head "HEAD" (git-islands-ref-head)) (local "main" (git-islands-ref-local)))))
+  ;; In a row, tags show only their icon; in full their names too.
+  (let ((row (git-islands-log-ref-labels '("refs/heads/main" "tag: refs/tags/v1")))
+        (full (git-islands-log-ref-labels '("refs/heads/main" "tag: refs/tags/v1") t)))
+    (should (string-match-p "main" row))
+    (should-not (string-match-p "v1" (substring-no-properties row)))
+    (should (string-match-p "v1" (substring-no-properties full))))
+  ;; Past the limit, branches are counted.
+  (let ((git-islands-log-ref-limit 1))
+    (should (string-match-p "+1" (git-islands-log-ref-labels '("refs/heads/a" "refs/heads/b")))))
   (should (string-prefix-p "Today " (git-islands-log-date (float-time))))
   (should (string-prefix-p "Yesterday " (git-islands-log-date (- (float-time) 86400))))
   (should (equal (git-islands-log-date 0) (format-time-string "%Y/%m/%d %H:%M" 0))))
