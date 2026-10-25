@@ -2,6 +2,8 @@
 
 [English](README.md) | 简体中文
 
+![Commit 工具窗口、左右对照的 diff，以及带提交图、分支窗格和详情窗格的 Git log](docs/hero.png)
+
 为 Emacs 提供 IntelliJ 风格的 Git 工具窗口：界面在 Emacs 中绘制，Git 操作由
 [Magit](https://magit.vc) 驱动。
 
@@ -24,7 +26,7 @@
 
 ## 安装
 
-仓库发布到上述地址后，可以用 `package-vc`（Emacs 29）安装：
+用 `package-vc`（Emacs 29）安装：
 
 ```elisp
 (package-vc-install "https://github.com/wwulfric/git-islands")

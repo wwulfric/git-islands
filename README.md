@@ -2,6 +2,8 @@
 
 English | [简体中文](README.zh-CN.md)
 
+![The Commit tool window, a side-by-side diff and the Git log with its graph, branches and details panes](docs/hero.png)
+
 IntelliJ-style Git tool windows for Emacs, drawn in Emacs and driven by
 [Magit](https://magit.vc).
 
@@ -27,7 +29,7 @@ repository.
 
 ## Install
 
-With `package-vc` (Emacs 29), once the repository is published at that address:
+With `package-vc` (Emacs 29):
 
 ```elisp
 (package-vc-install "https://github.com/wwulfric/git-islands")
