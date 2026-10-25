@@ -301,6 +301,7 @@ Nil selects the commit at point alone.")
   (remove-hook 'window-size-change-functions #'git-islands-fit-rows t)
   (remove-hook 'window-buffer-change-functions #'git-islands-fit-rows t)
   (jit-lock-register #'git-islands-log-fontify)
+  (setq-local git-islands-refit-function (lambda (_window) (jit-lock-refontify)))
   (add-hook 'window-size-change-functions #'git-islands-log-resized nil t)
   (add-hook 'window-scroll-functions #'git-islands-log-scrolled nil t)
   (add-hook 'post-command-hook #'git-islands-log-after-command nil t)
@@ -1047,6 +1048,7 @@ Each is (LABEL . FUNCTION); one commit has more, as IntelliJ's log."
   ;; File rows fit; the message is broken into rows as wide as the pane.
   (git-islands-view-setup)
   (add-hook 'window-size-change-functions #'git-islands-details-resized nil t)
+  (setq-local git-islands-refit-function #'git-islands-details-resized)
   (setq-local header-line-format '(:eval (git-islands-tool-header (git-islands-details-header))))
   (git-islands-set-mode-line))
 
@@ -1374,39 +1376,6 @@ width in pixels, kept between MIN and MAX pixels.")
   "Return the columns of a pane WIDTH, a (FRACTION MIN . MAX), wide."
   (max 10 (round (git-islands-log-pane-pixels width) (frame-char-width))))
 
-(defvar git-islands-log--fitting nil "Non-nil while the panes are being resized.")
-
-(defun git-islands-log-fit-panes (frame)
-  "Give FRAME's branches and details panes the widths they keep.
-Splitting the bottom side windows loses the widths asked for, and a
-wider frame would share its width out; the table takes what is left."
-  (let ((git-islands-log--fitting t))
-    (dolist (pane (git-islands-log-windows frame))
-      (when-let* ((width (window-parameter pane 'git-islands-pane-width)))
-        (ignore-errors
-          (window-resize pane (- width (window-pixel-width pane)) t t t))))
-    ;; The panes fitted their rows to the widths they had before: a change
-    ;; made here, inside a size change, runs no size hooks again.
-    (dolist (pane (git-islands-log-windows frame))
-      (with-current-buffer (window-buffer pane)
-        (if (derived-mode-p 'git-islands-log-mode)
-            (jit-lock-refontify)
-          (git-islands-fit-rows pane))))
-    (set-frame-parameter frame 'git-islands-log-width (frame-pixel-width frame))))
-
-(defun git-islands-log-keep-panes (frame)
-  "Keep FRAME's side panes as wide as they were after its width changed.
-When the frame kept its width, a pane changed by a drag keeps its new width."
-  (unless git-islands-log--fitting
-    (when (git-islands-log-window frame)
-      (if (eql (frame-parameter frame 'git-islands-log-width) (frame-pixel-width frame))
-          (dolist (pane (git-islands-log-windows frame))
-            (when (window-parameter pane 'git-islands-pane-width)
-              (set-window-parameter pane 'git-islands-pane-width (window-pixel-width pane))))
-        (git-islands-log-fit-panes frame)))))
-
-(add-hook 'window-size-change-functions #'git-islands-log-keep-panes)
-
 (defun git-islands-log-show (root)
   "Show ROOT's Git tool window along the frame's bottom; return the table's window."
   (let* ((log (git-islands-log-buffer root))
@@ -1423,13 +1392,10 @@ When the frame kept its width, a pane changed by a drag keeps its new width."
                     `((side . bottom) (slot . 1) (dedicated . t)
                       (window-width . ,(git-islands-log-pane-columns git-islands-log-details-width))
                       (window-parameters (no-delete-other-windows . t))))))
-      (when (window-live-p refs)
-        (set-window-parameter refs 'git-islands-pane-width
-                              (git-islands-log-pane-pixels git-islands-log-refs-width)))
-      (when (window-live-p details)
-        (set-window-parameter details 'git-islands-pane-width
-                              (git-islands-log-pane-pixels git-islands-log-details-width))))
-    (git-islands-log-fit-panes (selected-frame))
+      (git-islands-pane-keep refs (lambda ()
+                                    (git-islands-log-pane-pixels git-islands-log-refs-width)))
+      (git-islands-pane-keep details (lambda ()
+                                       (git-islands-log-pane-pixels git-islands-log-details-width))))
     ;; A pixel of right fringe: without one
     ;; a selected row, which fills the window, would count as cut.
     (dolist (pane (git-islands-log-windows))

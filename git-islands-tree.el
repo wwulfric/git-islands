@@ -13,6 +13,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'seq)
 (require 'face-remap)
 (require 'svg)
 (require 'magit-section)
@@ -326,6 +327,62 @@ the current buffer."
                                        (propertize "…" 'face 'git-islands-dim)))))))))
                   (forward-line 1))))
             (git-islands-highlight)))))))
+
+(defvar-local git-islands-refit-function #'git-islands-fit-rows
+  "Function fitting this buffer's rows to its window, given the window.
+A side pane resized by `git-islands-pane-fit' calls it.")
+
+;;;; Side panes
+
+;; A tool window's panes keep their width as a share of the frame's, within
+;; limits: splitting side windows loses the widths asked for, and a frame
+;; maximized after a pane opens would otherwise give it a share of its own.
+
+(defvar git-islands-pane--fitting nil "Non-nil while side panes are resized.")
+
+(defun git-islands-pane-keep (window width)
+  "Keep side pane WINDOW as wide as WIDTH, a function returning pixels."
+  (when (window-live-p window)
+    (set-window-parameter window 'git-islands-pane-width width)
+    (git-islands-pane-fit (window-frame window))))
+
+(defun git-islands-pane-fit (frame)
+  "Give FRAME's side panes their widths, and fit their rows to them.
+A resize made here, inside a size change, runs no size hooks again, so
+each pane's rows are fitted here too."
+  (let ((git-islands-pane--fitting t)
+        panes)
+    (dolist (window (window-list frame 'no-minibuffer))
+      (when-let* ((width (window-parameter window 'git-islands-pane-width)))
+        (push window panes)
+        (ignore-errors
+          (window-resize window (- (funcall width) (window-pixel-width window)) t t t))))
+    (dolist (window panes)
+      (with-current-buffer (window-buffer window)
+        (funcall git-islands-refit-function window)))
+    (set-frame-parameter frame 'git-islands-pane-frame-width (frame-pixel-width frame))))
+
+(defun git-islands-pane-follow (frame)
+  "Size FRAME's side panes again after its windows changed size.
+A pane its divider was dragged for keeps its new share of the frame;
+after any other change, such as the frame's width or another window
+showing, each pane takes its own width again."
+  (unless git-islands-pane--fitting
+    (let ((panes (seq-filter (lambda (window) (window-parameter window 'git-islands-pane-width))
+                             (window-list frame 'no-minibuffer))))
+      (if (memq this-command '(mouse-drag-vertical-line mouse-drag-mode-line
+                               mouse-drag-header-line))
+          (dolist (window panes)
+            (let ((share (/ (float (window-pixel-width window)) (frame-pixel-width frame))))
+              (set-window-parameter window 'git-islands-pane-width
+                                    (lambda () (round (* share (frame-pixel-width frame)))))))
+        (when (seq-some (lambda (window)
+                          (/= (window-pixel-width window)
+                              (funcall (window-parameter window 'git-islands-pane-width))))
+                        panes)
+          (git-islands-pane-fit frame))))))
+
+(add-hook 'window-size-change-functions #'git-islands-pane-follow)
 
 (defun git-islands-wrap (text width)
   "Return TEXT's lines broken at spaces to fit WIDTH pixels, in this buffer's font."

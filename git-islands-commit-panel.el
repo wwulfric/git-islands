@@ -647,6 +647,8 @@ it off brings back what was typed before."
       ;; lines from the editor, not from the message.
       (when-let* ((message-window (get-buffer-window message)))
         (window-preserve-size message-window nil t))
+      ;; As wide as asked, whatever the frame's width does later.
+      (git-islands-pane-keep window (lambda () (* (git-islands-side-width) (frame-char-width))))
       (git-islands-refresh root)
       window)))
 
