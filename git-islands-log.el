@@ -137,37 +137,62 @@ left out."
        (list (list 'tag (string-join (nreverse tags) ", ") '(git-islands-ref-tag)))))))
 
 (defvar git-islands-log-ref-icons (make-hash-table :test #'equal)
-  "Label icons by their colors, kind and height.")
+  "Label icons by their colors and height.")
 
-(defun git-islands-log-ref-icon (faces tag)
+(defconst git-islands-log-tag-path
+  "M13.4495 7.5001L7.01028 13.9394C6.81502 14.1347 6.49843 14.1347 6.30317 13.9394\
+L2.06053 9.69679C1.86527 9.50152 1.86527 9.18494 2.06053 8.98968L8.49978 2.55035\
+C8.61106 2.43907 8.76824 2.38667 8.92404 2.40893L12.6363 2.93926\
+C12.8563 2.97069 13.0292 3.14354 13.0606 3.36352L13.5909 7.07584\
+C13.6132 7.23163 13.5608 7.38882 13.4495 7.5001Z"
+  "Outline of a label in a 16-unit square, as IntelliJ's TagPainter draws it.")
+
+(defun git-islands-log-ref-icon (faces)
   "Return the label icon in FACES' colors, the last one in front.
-TAG punches a hole in it, as in a price tag.
-Several colors draw as many labels, each behind the next, as IntelliJ
-draws a branch with its remote."
+As IntelliJ's log draws it: one price tag per color, each shifted right
+of the one behind and cut out of it by a thin gap; the front one has a
+dot.  A branch with its remote is two tags, as \"origin & main\"."
   (let* ((colors (mapcar (lambda (face) (git-islands-face-color face :foreground "#6C707E"))
                          faces))
-         (height (min 16 (frame-char-height)))
-         (key (list colors tag height)))
+         (size (min 16 (frame-char-height)))
+         (key (list colors size)))
     (or (gethash key git-islands-log-ref-icons)
         (puthash
          key
-         (let* ((step 4)
-                (width (+ 12 (* step (1- (length colors)))))
-                (svg (svg-create width height))
-                (top (/ (- height 10) 2.0)))
-           ;; The back label first, at the right; the front one ends at the left.
-           (seq-do-indexed
-            (lambda (color index)
-              (let ((x (* step (- (length colors) 1 index))))
-                (svg-polygon svg (list (cons (+ x 1) (+ top 5)) (cons (+ x 4.5) top)
-                                       (cons (+ x 11) top) (cons (+ x 11) (+ top 10))
-                                       (cons (+ x 4.5) (+ top 10)))
-                             :fill "none" :stroke color :stroke-width 1.2
-                             :stroke-linejoin "round")
-                (when tag
-                  (svg-circle svg (+ x 5.6) (+ top 5) 1 :fill color))))
-            colors)
-           (svg-image svg :ascent 'center))
+         (let* ((count (length colors))
+                (scale (/ size 16.0))
+                ;; IntelliJ's label unit: a tag is 6.25 of them wide.
+                (unit (/ size 6.25))
+                (width (round (* (+ 6.25 (* 2 (1- count))) unit)))
+                (tag (lambda (offset attributes)
+                       (format "<path transform='translate(%.2f 0) scale(%.4f)' d='%s' %s/>"
+                               offset scale git-islands-log-tag-path attributes))))
+           (git-islands-image-string
+            (concat
+             (format "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>"
+                     width size)
+             ;; Each tag but the front one is cut where the next one lies,
+             ;; and a little to its left for the gap.
+             (mapconcat
+              (lambda (index)
+                (let ((offset (* 2 index unit)))
+                  (concat
+                   (when (< index (1- count))
+                     (format "<mask id='m%d'><rect width='%d' height='%d' fill='white'/>%s%s</mask>"
+                             index width size
+                             (funcall tag (- (* 2 (1+ index) unit) (sqrt 2))
+                                      "fill='black' stroke='black' stroke-width='1'")
+                             (funcall tag (* 2 (1+ index) unit)
+                                      "fill='black' stroke='black' stroke-width='1'")))
+                   (funcall tag offset
+                            (format "fill='none' stroke='%s' stroke-width='1' stroke-linejoin='round' %s"
+                                    (nth index colors)
+                                    (if (< index (1- count)) (format "mask='url(#m%d)'" index) "")))
+                   (when (= index (1- count))
+                     (format "<circle cx='%.2f' cy='%.2f' r='%.2f' fill='%s'/>"
+                             (+ offset (* 10.5 scale)) (* 5.5 scale) scale (nth index colors))))))
+              (number-sequence 0 (1- count)) "")
+             "</svg>")))
          git-islands-log-ref-icons))))
 
 (defun git-islands-log-ref-labels (refs &optional full)
@@ -185,7 +210,7 @@ short; with FULL every name shows in full, as the details pane does."
      (append
       (mapcar (pcase-lambda (`(,_ ,text ,faces))
                 (propertize
-                 (concat (propertize " " 'display (git-islands-log-ref-icon faces nil))
+                 (concat (git-islands-log-ref-icon faces)
                          (git-islands-space 4)
                          (propertize (if full text
                                        (truncate-string-to-width text git-islands-log-ref-width
@@ -197,8 +222,7 @@ short; with FULL every name shows in full, as the details pane does."
         (list (propertize (format "+%d" hidden) 'face 'git-islands-ref-label
                           'help-echo (mapconcat #'cadr (nthcdr (length shown) branches) "\n"))))
       (mapcar (pcase-lambda (`(,_ ,text ,faces))
-                (concat (propertize " " 'display (git-islands-log-ref-icon faces t)
-                                    'help-echo text)
+                (concat (propertize (git-islands-log-ref-icon faces) 'help-echo text)
                         (when full
                           (concat (git-islands-space 4)
                                   (propertize text 'face 'git-islands-ref-label)))))
