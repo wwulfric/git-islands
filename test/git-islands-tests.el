@@ -833,4 +833,45 @@
       (should (equal (git-islands-commit-subject (git-islands-log-commit)) "Initial")))))
 
 
+(ert-deftest git-islands-pane-fit-reaches-sub-character-target ()
+  "A pixel target must not be rounded away and retried on every size hook."
+  (let* ((window (selected-window))
+         (frame (selected-frame))
+         (old-width (window-parameter window 'git-islands-pane-width))
+         (actual 256) (resizes 0)
+         (git-islands-refit-function #'ignore))
+    (unwind-protect
+        (progn
+          (set-window-parameter window 'git-islands-pane-width (lambda () 259))
+          (cl-letf (((symbol-function 'window-list) (lambda (&rest _) (list window)))
+                    ((symbol-function 'window-pixel-width) (lambda (_) actual))
+                    ((symbol-function 'window-resize)
+                     (lambda (_ delta &rest _args)
+                       (cl-incf resizes)
+                       ;; Match Emacs' rounding with an eight-pixel cell.
+                       (cl-incf actual (if window-resize-pixelwise delta
+                                         (* 8 (round delta 8)))))))
+            (git-islands-pane-fit frame)
+            (should (= actual 259))
+            (git-islands-pane-follow frame)
+            (should (= resizes 1))))
+      (set-window-parameter window 'git-islands-pane-width old-width))))
+
+(ert-deftest git-islands-pane-fit-skips-zero-delta-resize ()
+  "Opening another pane must not resize a pane already at its target."
+  (let* ((window (selected-window))
+         (old-width (window-parameter window 'git-islands-pane-width))
+         (width (window-pixel-width window))
+         (resizes 0)
+         (git-islands-refit-function #'ignore))
+    (unwind-protect
+        (progn
+          (set-window-parameter window 'git-islands-pane-width (lambda () width))
+          (cl-letf (((symbol-function 'window-list) (lambda (&rest _) (list window)))
+                    ((symbol-function 'window-resize)
+                     (lambda (&rest _) (cl-incf resizes))))
+            (git-islands-pane-fit (selected-frame))
+            (should (= resizes 0))))
+      (set-window-parameter window 'git-islands-pane-width old-width))))
+
 ;;; git-islands-tests.el ends here

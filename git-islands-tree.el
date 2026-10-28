@@ -351,12 +351,19 @@ A side pane resized by `git-islands-pane-fit' calls it.")
 A resize made here, inside a size change, runs no size hooks again, so
 each pane's rows are fitted here too."
   (let ((git-islands-pane--fitting t)
+        ;; PIXELWISE in `window-resize' specifies the delta's units, but
+        ;; without this binding Emacs still rounds it to character cells.
+        ;; An unreachable target then retries on every size hook, even for
+        ;; echo-area changes, resetting the editor's pixel scroll offset.
+        (window-resize-pixelwise t)
         panes)
     (dolist (window (window-list frame 'no-minibuffer))
       (when-let* ((width (window-parameter window 'git-islands-pane-width)))
         (push window panes)
-        (ignore-errors
-          (window-resize window (- (funcall width) (window-pixel-width window)) t t t))))
+        (let ((delta (- (funcall width) (window-pixel-width window))))
+          ;; Even a zero-delta resize applies a new window configuration.
+          (unless (zerop delta)
+            (ignore-errors (window-resize window delta t t t))))))
     (dolist (window panes)
       (with-current-buffer (window-buffer window)
         (funcall git-islands-refit-function window)))
