@@ -33,7 +33,7 @@ fonts, faces and toolbar. [Reproduce this demo](docs/screenshots.md).
 
 - Emacs 29.1 or later, with SVG support for the graph, checkboxes and pills
 - Magit 4.7 or later
-- [expui-icons](https://github.com/wwulfric/expui-icons) 0.2 or later, with the `diff/gutterCheckBox@14x14` size variants
+- [expui-icons](https://github.com/wwulfric/expui-icons) 0.2.2 or later (includes the required 14px checkbox resources)
 
 ## Install
 

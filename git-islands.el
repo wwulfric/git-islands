@@ -5,7 +5,7 @@
 
 ;; Author: haidao
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (magit "4.7") (expui-icons "0.2"))
+;; Package-Requires: ((emacs "29.1") (magit "4.7") (expui-icons "0.2.2"))
 ;; Keywords: vc, tools
 ;; URL: https://github.com/wwulfric/git-islands
 

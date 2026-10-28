@@ -30,7 +30,7 @@
 
 - Emacs 29.1 或更高版本，需支持 SVG（用于绘制提交图、复选框和选中行）
 - Magit 4.7 或更高版本
-- [expui-icons](https://github.com/wwulfric/expui-icons) 0.2 或更高版本，需包含 `diff/gutterCheckBox@14x14` 尺寸变体
+- [expui-icons](https://github.com/wwulfric/expui-icons) 0.2.2 或更高版本（包含所需的 14px 复选框资源）
 
 ## 安装
 
