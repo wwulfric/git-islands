@@ -638,7 +638,9 @@ it off brings back what was typed before."
                            (window-parameters (no-other-window . t)
                                               (no-delete-other-windows . t))))))
       (display-buffer-in-side-window
-       message `((side . left) (slot . 1) (dedicated . t) (window-height . 0.3)
+       message `((side . left) (slot . 1) (dedicated . t)
+                 ,@(unless (get-buffer-window message (selected-frame))
+                     `((window-height . ,git-islands-message-window-height)))
                  (window-parameters (no-delete-other-windows . t))))
       ;; One card with the message: the line between them is the divider,
       ;; and the message's status line holds the card's bottom corners.

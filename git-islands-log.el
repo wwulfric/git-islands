@@ -1362,10 +1362,12 @@ COMMIT can be a list of commits, newest first, when several are selected."
 
 (defvar git-islands-log-refs-width '(0.15 180 . 400)
   "Width of the branches pane: (FRACTION MIN . MAX), FRACTION of the frame's
-width in pixels, kept between MIN and MAX pixels.")
+width in pixels, kept between MIN and MAX pixels.
+Set before opening the log; explicit widths are used without adjustment.")
 
-(defvar git-islands-log-details-width '(0.28 280 . 720)
-  "Width of the details pane, as `git-islands-log-refs-width' gives it.")
+(defvar git-islands-log-details-width '(0.22 240 . 600)
+  "Width of the details pane, as `git-islands-log-refs-width' gives it.
+The compact default leaves room for the commit table's author column.")
 
 (defun git-islands-log-pane-pixels (width)
   "Return the pixels of a pane WIDTH, a (FRACTION MIN . MAX), wide."

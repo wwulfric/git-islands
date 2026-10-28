@@ -29,6 +29,19 @@
 (declare-function magit-diff-range "magit-diff" (rev-or-range &optional args files))
 (declare-function expui-icons-icon "expui-icons" (name &rest props))
 
+(defcustom git-islands-diff-line-numbers t
+  "Whether Diff supplies absolute line numbers when a buffer has none.
+Only the two diff buffers are affected.  Existing line number styles,
+including relative and visual numbering, are preserved.  Nil leaves all
+line number settings alone.  Changes apply when entering Diff.
+On exit, buffers whose settings Diff changed regain their previous value
+and buffer-local status.  This does not enable a global line number mode."
+  :type 'boolean
+  :group 'git-islands)
+
+(defvar-local git-islands-diff--saved-line-numbers nil
+  "Saved (LOCAL VALUE) for line numbers temporarily enabled by Diff.")
+
 ;;;; Faces
 
 (defface git-islands-diff-modified
@@ -171,6 +184,13 @@ LINE is on the left side if FROM-LEFT, else on the right side."
   :keymap git-islands-diff-mode-map
   (if git-islands-diff-mode
       (progn
+        (when (and git-islands-diff-line-numbers
+                   (null display-line-numbers)
+                   (null git-islands-diff--saved-line-numbers))
+          (setq git-islands-diff--saved-line-numbers
+                (list (local-variable-p 'display-line-numbers)
+                      display-line-numbers))
+          (setq-local display-line-numbers t))
         (add-hook 'window-scroll-functions #'git-islands-diff-scrolled nil t)
         (add-hook 'after-change-functions #'git-islands-diff-changed nil t)
         (add-hook 'kill-buffer-hook #'git-islands-diff-killed nil t)
@@ -178,6 +198,12 @@ LINE is on the left side if FROM-LEFT, else on the right side."
         (when buffer-read-only
           (setq-local minor-mode-overriding-map-alist
                       (list (cons 'git-islands-diff-mode git-islands-diff-read-only-map)))))
+    (when git-islands-diff--saved-line-numbers
+      (pcase-let ((`(,local ,value) git-islands-diff--saved-line-numbers))
+        (if local
+            (setq-local display-line-numbers value)
+          (kill-local-variable 'display-line-numbers)))
+      (setq git-islands-diff--saved-line-numbers nil))
     (remove-hook 'window-scroll-functions #'git-islands-diff-scrolled t)
     (remove-hook 'after-change-functions #'git-islands-diff-changed t)
     (remove-hook 'kill-buffer-hook #'git-islands-diff-killed t)

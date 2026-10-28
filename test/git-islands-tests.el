@@ -22,6 +22,80 @@
 (require 'git-islands-merge3)
 (require 'git-islands-changelists)
 
+;;;; Editor integration
+
+(ert-deftest git-islands-mode-lines-default-and-overrides ()
+  ;; Cover every consumer, including the writable commit message mode.
+  (dolist (mode '(git-islands-commit-mode git-islands-message-mode
+                  git-islands-log-mode git-islands-details-mode
+                  git-islands-refs-mode))
+    (dolist (setting '(default none nil (" custom ")
+                      (:eval (concat "personal" " status"))))
+      (with-temp-buffer
+        (let ((git-islands-mode-line-format setting)
+              (inherited (default-value 'mode-line-format)))
+          (funcall mode)
+          (pcase setting
+            ('default
+             (setq default-directory "/tmp/parent/project/")
+             (should (equal mode-line-format
+                            '(:eval (git-islands-default-mode-line))))
+             (should (string-match-p "project" (git-islands-default-mode-line))))
+            ('none (should-not mode-line-format))
+            ('nil (should (equal mode-line-format inherited)))
+            (_ (should (equal mode-line-format setting)))))))))
+
+(ert-deftest git-islands-mode-lines-update-existing-buffer ()
+  (with-temp-buffer
+    (let ((git-islands-mode-line-format 'none))
+      (git-islands-log-mode)
+      (should-not mode-line-format)
+      (setq git-islands-mode-line-format '(:eval (concat "personal" " status")))
+      (git-islands-set-mode-line)
+      (should (equal mode-line-format git-islands-mode-line-format))
+      (setq git-islands-mode-line-format nil)
+      (git-islands-set-mode-line)
+      (should (equal mode-line-format '(:eval (concat "personal" " status"))))
+      (setq git-islands-mode-line-format 'default)
+      (git-islands-set-mode-line)
+      (should (equal mode-line-format '(:eval (git-islands-default-mode-line)))))))
+
+(ert-deftest git-islands-mode-line-fits-each-window ()
+  (save-window-excursion
+    (delete-other-windows)
+    (let ((buffer (generate-new-buffer " *mode-line-test*")))
+      (unwind-protect
+          (progn
+            (set-window-buffer (selected-window) buffer)
+            (with-current-buffer buffer
+              (special-mode)
+              (setq mode-name "Git Log"
+                    default-directory "/tmp/parent/repository-name/"))
+            (let ((narrow (split-window-right 24)))
+              (set-window-buffer narrow buffer)
+              (with-current-buffer buffer
+                (let ((small (git-islands-default-mode-line)))
+                  (should (equal small " Git Log"))
+                  (should (equal (get-text-property 0 'help-echo small)
+                                 default-directory)))
+                (with-selected-window narrow
+                  (should (string-match-p "repository-name"
+                                          (git-islands-default-mode-line)))))))
+        (kill-buffer buffer)))))
+
+(ert-deftest git-islands-message-initial-height-and-manual-resize ()
+  (git-islands-test-with-repo
+    (save-window-excursion
+      (delete-other-windows)
+      (let ((git-islands-message-window-height 8))
+        (git-islands-commit-show root)
+        (let ((message-window (git-islands-message-window)))
+          (should (= (window-total-height message-window) 8))
+          (window-resize message-window 2)
+          (let ((height (window-total-height message-window)))
+            (git-islands-commit-show root)
+            (should (= (window-total-height message-window) height))))))))
+
 ;;;; Parsing
 
 (ert-deftest git-islands-status-parse-porcelain-v2 ()
@@ -456,6 +530,24 @@
       (should (equal (git-islands-entry-orig (car entries)) "README"))
       (should (equal (mapcar #'git-islands-entry-change entries) '(renamed added))))))
 
+(ert-deftest git-islands-log-default-layout-leaves-room-for-author ()
+  ;; Include the documented 180-column GUI demo and a smaller frame.
+  ;; Reserve room for native scroll bars, fringes and divider rounding.
+  (dolist (pixels '(1200 1297 1600 1920))
+    (cl-letf (((symbol-function 'frame-pixel-width) (lambda (&optional _) pixels)))
+      (let ((table (- pixels 32
+                      (git-islands-log-pane-pixels git-islands-log-refs-width)
+                      (git-islands-log-pane-pixels git-islands-log-details-width))))
+        (should (memq 'author (git-islands-log-columns-shown table))))))
+  ;; Existing user widths still take priority, even if they hide the author.
+  (let ((git-islands-log-refs-width '(0.15 180 . 400))
+        (git-islands-log-details-width '(0.28 280 . 720)))
+    (cl-letf (((symbol-function 'frame-pixel-width) (lambda (&optional _) 1297)))
+      (should (= (git-islands-log-pane-pixels git-islands-log-refs-width) 195))
+      (should (= (git-islands-log-pane-pixels git-islands-log-details-width) 363))))
+  (should (equal (git-islands-log-columns-shown 600) '(date)))
+  (should-not (git-islands-log-columns-shown 400)))
+
 (ert-deftest git-islands-log-tool-window-layout ()
   (git-islands-test-with-repo
     (delete-other-windows)
@@ -474,6 +566,23 @@
       (should-not (git-islands-log-windows)))))
 
 ;;;; Side-by-side diff
+
+(ert-deftest git-islands-diff-line-numbers-restore-settings ()
+  (dolist (enabled '(t nil))
+    (dolist (value '(nil t relative visual))
+      (dolist (local '(nil t))
+        (with-temp-buffer
+          (let ((git-islands-diff-line-numbers enabled)
+                (display-line-numbers value))
+            (when local (setq-local display-line-numbers value))
+            (let ((was-local (local-variable-p 'display-line-numbers)))
+              (git-islands-diff-mode 1)
+              (should (eq display-line-numbers (if enabled (or value t) value)))
+              ;; Repeated activation must not overwrite the saved state.
+              (git-islands-diff-mode 1)
+              (git-islands-diff-mode -1)
+              (should (eq display-line-numbers value))
+              (should (eq (local-variable-p 'display-line-numbers) was-local)))))))))
 
 (ert-deftest git-islands-diff-parses-and-maps-lines ()
   (let ((hunks (git-islands-diff-parse (concat "@@ -2 +2 @@\n-b\n+B\n"
@@ -528,6 +637,7 @@
       (should (equal (buffer-file-name right) (expand-file-name "code.el" root)))
       (should (= (length (git-islands-diff-session-hunks session)) 2))
       (with-current-buffer left
+        (should display-line-numbers)
         (should buffer-read-only)
         (should (equal (buffer-string) "one\ntwo\nthree\nfour\n"))
         ;; Two filler lines face the right side's two new lines.
@@ -538,6 +648,7 @@
                           (overlays-in (point-min) (point-max))))
         (should (eq (key-binding (kbd "q")) #'git-islands-diff-quit)))
       (with-current-buffer right
+        (should display-line-numbers)
         (should (seq-some (lambda (overlay) (eq (overlay-get overlay 'face) 'git-islands-diff-modified))
                           (overlays-in (point-min) (point-max))))
         ;; Changed words are marked inside the modified line.
@@ -553,7 +664,8 @@
         (should (= (length (git-islands-diff-session-hunks session)) 1))
         (git-islands-diff-quit)
         (should-not (overlays-in (point-min) (point-max)))
-        (should-not git-islands-diff-mode))
+        (should-not git-islands-diff-mode)
+        (should-not display-line-numbers))
       (should-not (buffer-live-p left))
       (should (= (length (window-list)) before))
       (kill-buffer right))))
