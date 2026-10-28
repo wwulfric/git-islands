@@ -33,8 +33,6 @@
 
 (defconst git-islands-checkbox-size 14 "Pixel size of a checkbox.")
 
-(defvar git-islands-checkbox-cache (make-hash-table :test #'equal))
-
 (defun git-islands-face-color (face attribute fallback)
   "Return FACE's ATTRIBUTE color as #RRGGBB, or FALLBACK if it has none.
 SVG images take the color too, and know no Emacs names such as grey50."
@@ -46,28 +44,13 @@ SVG images take the color too, and know no Emacs names such as grey50."
       (git-islands-svg-color color))))
 
 (defun git-islands-checkbox-image (state)
-  "Return a New UI checkbox image in STATE: `on', `off' or `partial'."
-  (let* ((accent (git-islands-face-color 'git-islands-source-icon :foreground "#3574F0"))
-         (border (git-islands-face-color 'git-islands-neutral-icon :foreground "#818594"))
-         (background (git-islands-face-color 'default :background "#FFFFFF"))
-         (key (list state accent border background (frame-char-height))))
-    (or (gethash key git-islands-checkbox-cache)
-        (puthash
-         key
-         (let* ((size git-islands-checkbox-size)
-                (svg (svg-create size size)))
-           (if (eq state 'off)
-               (svg-rectangle svg 0.5 0.5 (- size 1) (- size 1) :rx 3
-                              :fill background :stroke border :stroke-width 1)
-             (svg-rectangle svg 0 0 size size :rx 3 :fill accent))
-           (pcase state
-             ('on (svg-polyline svg '((3.5 . 7.2) (6 . 9.7) (10.5 . 4.5))
-                                :fill "none" :stroke "#FFFFFF" :stroke-width 1.6
-                                :stroke-linecap "round" :stroke-linejoin "round"))
-             ('partial (svg-line svg 4 7 10 7 :stroke "#FFFFFF" :stroke-width 1.6
-                                 :stroke-linecap "round")))
-           (svg-image svg :ascent 'center))
-         git-islands-checkbox-cache))))
+  "Return an upstream gutter checkbox in STATE: `on', `off' or `partial'."
+  (expui-icons-image
+   (pcase state
+     ('on "diff/gutterCheckBoxSelected@14x14")
+     ('partial "diff/gutterCheckBoxIndeterminate@14x14")
+     (_ "diff/gutterCheckBox@14x14"))
+   :height git-islands-checkbox-size))
 
 (defun git-islands-checkbox (state &optional action)
   "Return a checkbox in STATE that runs ACTION when clicked."
