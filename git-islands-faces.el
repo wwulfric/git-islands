@@ -56,15 +56,11 @@
     ('conflict 'git-islands-conflict)
     (_ 'git-islands-modified)))
 
-(defface git-islands-button
-  '((((background dark)) :background "#393B40" :foreground "#DFE1E5")
-    (t :background "#ECEDEF" :foreground "#333333"))
+(defface git-islands-button '((t (:inherit link :underline nil)))
   "Secondary buttons, such as Commit and Push."
   :group 'git-islands)
 
-(defface git-islands-primary-button
-  '((((background dark)) :background "#3574F0" :foreground "#FFFFFF")
-    (t :background "#245FA5" :foreground "#FFFFFF"))
+(defface git-islands-primary-button '((t (:inherit git-islands-button :weight bold)))
   "The default button, such as Commit."
   :group 'git-islands)
 

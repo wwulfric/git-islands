@@ -191,6 +191,27 @@ Diff 源码缓冲区保留自身的 mode line。
 Diff 配色单独定义在 `git-islands-diff.el`，还包括 `git-islands-diff-modified`、
 `git-islands-diff-word` 和 `git-islands-diff-filler`。
 
+默认外观继承编辑器字体和选中行 face，使用直角选中背景与文字操作按钮。
+Commit 和 Log 不再显示刷新、隐藏图标，仍可使用 `g` 和 `q`；Log 的 `C`
+仍用于清除筛选。
+
+需要圆角选中行时，在 `git-islands-ui` 加载后设置 `git-islands-hl-radius`
+和 `git-islands-hl-margin`，并让 `git-islands-row-inset` 至少等于两者之和。
+需要圆角按钮时，在 `git-islands-tree` 加载后将
+`git-islands-button-render-function` 设为 `git-islands-button-rounded`，通过
+`git-islands-button-radius`（nil 表示胶囊）、`git-islands-button-padding`
+和按钮 face 调整外观。自定义渲染函数接收 `(label primary)` 并返回显示字符串，
+库统一添加点击、悬停和提示行为。默认渲染函数为 `git-islands-button-text`。
+下面的示例演示如何显式启用装饰样式。
+
+所有窗格的表头统一使用 `git-islands-header` 设置背景与字体。
+表头用一像素内嵌 `:box` 标记实际边缘，可修改颜色或设为 nil 隐藏。
+高度按表头字体计算，并为图标和圆角按钮留出空间。
+`git-islands-header-padding` 控制内容上下的最小留白。`git-islands-header-ascent` 默认 nil，
+自动计算文字的垂直居中；已有配置中的百分比数值仍然有效。
+`git-islands-ui-font` 只应设置字体属性；让行内文字继承 `default` 会连同背景一起继承，
+覆盖表头本身的背景。
+
 [examples/style.el](examples/style.el) 将以上设置组合为可选的独立示例。
 在主题之后执行 `(load "/path/to/git-islands/examples/style.el")` 即可加载。
 它演示库本身的样式设置；题图还使用了编辑器全局的个人样式。

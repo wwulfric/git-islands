@@ -209,6 +209,29 @@ File status colors (`git-islands-modified`, `git-islands-added`,
 including `git-islands-diff-modified`, `git-islands-diff-word` and
 `git-islands-diff-filler`.
 
+Defaults inherit the editor font and selection faces, with square selections
+and text action buttons. Commit and Log omit refresh and hide icons; use `g`
+and `q`. Log's `C` still clears filters.
+
+For rounded selections, set `git-islands-hl-radius` and
+`git-islands-hl-margin` after loading `git-islands-ui`. Keep
+`git-islands-row-inset` at least their sum. For rounded buttons, set
+`git-islands-button-render-function` to `git-islands-button-rounded` after
+loading `git-islands-tree`; customize `git-islands-button-radius` (nil means
+pill-shaped), `git-islands-button-padding`, and the button faces.
+A custom renderer takes `(label primary)` and returns a display string;
+Git Islands adds click handling, hover and help text. The default renderer is
+`git-islands-button-text`. See the example below for an opt-in styled setup.
+
+Header backgrounds and typography use `git-islands-header` across all panes.
+The header uses a one-pixel inset `:box` at its actual edges; customize its
+color or set it to nil to hide it. Height is measured from the header font,
+with room for icons and rounded buttons. `git-islands-header-padding` controls
+the minimum padding above and below content. `git-islands-header-ascent` defaults to nil for automatic
+vertical centering; explicit percentages remain supported.
+Keep `git-islands-ui-font` limited to font attributes: inheriting `default`
+on inline text also imports its background, covering the header beneath it.
+
 [examples/style.el](examples/style.el) combines these settings into an optional,
 standalone file. Load it after your theme with
 `(load "/path/to/git-islands/examples/style.el")`. It illustrates package styling;

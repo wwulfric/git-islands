@@ -851,13 +851,7 @@ As in IntelliJ, a chip names its value only once one is set."
             (git-islands-log-chip "User" (plist-get filters :user) #'git-islands-log-filter-user)
             (git-islands-log-chip "Date" (plist-get filters :since) #'git-islands-log-filter-date)
             (git-islands-log-chip "Paths" (plist-get filters :path) #'git-islands-log-filter-path)
-            (git-islands-log-chip "Text" (plist-get filters :text) #'git-islands-log-filter-text)
-            (when (mode-line-window-selected-p)
-              (git-islands-at-right
-               (git-islands-toolbar '(("general/refresh" git-islands-log-reload "Refresh (g)")
-                                      ("general/close" git-islands-log-clear-filters "Clear Filters (C)")
-                                      ("general/hide" git-islands-log-hide "Hide (q)")))
-               (git-islands-line-end))))))
+            (git-islands-log-chip "Text" (plist-get filters :text) #'git-islands-log-filter-text))))
 
 ;;;; Commands on commits
 
@@ -1157,7 +1151,7 @@ COMMIT can be a list of commits, newest first, when several are selected."
                               (setq git-islands-details-width (and window (window-body-width window t)))
                               (dolist (line (git-islands-wrap (git-islands-details-message commit)
                                                               (- (or git-islands-details-width 320)
-                                                                 git-islands-row-inset git-islands-fit-margin)))
+                                                                 git-islands-row-inset (git-islands-fit-margin))))
                                 (git-islands-tree-row 0 line)))
                             (git-islands-tree-row 0 "")
                             ;; One fact a row, so a narrow pane wraps none of them.

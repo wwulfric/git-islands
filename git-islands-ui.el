@@ -4,11 +4,9 @@
 ;; SPDX-License-Identifier: Apache-2.0
 
 ;;; Commentary:
-;; The tool windows look as JetBrains' New UI does: rows of one height in
-;; a proportional font, the selected row a rounded pill inset from the
-;; window's edges, headers with icon buttons.  This file holds those
-;; pieces, measured in pixels since proportional text and icons defeat
-;; column counts.  Faces and sizes have plain defaults; a configuration
+;; The tool windows use theme faces and plain selections by default.
+;; Configurations can opt into rounded selections and other styling.
+;; These pieces use pixel measurements to support proportional text and icons.  Faces and sizes have plain defaults; a configuration
 ;; can tie them to its own.
 
 ;;; Code:
@@ -18,8 +16,20 @@
 
 ;;;; Faces
 
-(defface git-islands-ui-font '((t (:inherit variable-pitch)))
-  "Proportional font of the tool windows' text."
+(defface git-islands-ui-font '((t ()))
+  "Typography of the tool windows' text.
+Leave colors unspecified so text keeps its surrounding background."
+  :group 'git-islands)
+
+(defface git-islands-header
+  '((((background dark))
+     (:inherit (git-islands-ui-font default) :height 1.0 :weight normal
+      :box (:line-width -1 :color "#484848")))
+    (t (:inherit (git-islands-ui-font default) :height 1.0 :weight normal
+        :box (:line-width -1 :color "#D8D8D8"))))
+  "Common header face for lists, commit messages, diffs and merges.
+The inset one-pixel box follows the actual header edges.  Customize
+its color, or set `:box' to nil to hide the border."
   :group 'git-islands)
 
 (defface git-islands-file-name '((t (:inherit git-islands-ui-font :height 1.0)))
@@ -39,12 +49,12 @@
   :group 'git-islands)
 
 (defface git-islands-hl-line
-  '((((background dark)) :background "#2E436E") (t :background "#D5E1F5"))
+  '((t (:inherit highlight)))
   "The selected rows of the selected tool window."
   :group 'git-islands)
 
 (defface git-islands-hl-line-inactive
-  '((((background dark)) :background "#393B40") (t :background "#E8E9EB"))
+  '((t (:inherit highlight)))
   "The selected rows of a tool window that is not selected."
   :group 'git-islands)
 
@@ -56,13 +66,21 @@
 
 (defconst git-islands-indent 16 "Pixels each folder level indents its rows.")
 
-(defconst git-islands-hl-margin 6
-  "Pixels between a selected row's pill and the window's edges.")
+(defcustom git-islands-hl-margin 0
+  "Pixels between a selected row and the window's edges."
+  :type 'natnum
+  :group 'git-islands)
 
-(defconst git-islands-hl-radius 6 "Radius in pixels of a selected row's rounded ends.")
+(defcustom git-islands-hl-radius 0
+  "Radius in pixels of selected rows; zero gives square corners."
+  :type 'natnum
+  :group 'git-islands)
 
-(defconst git-islands-row-inset (+ git-islands-hl-margin git-islands-hl-radius)
-  "Pixels before every row, where a selected row's left end is drawn.")
+(defcustom git-islands-row-inset 12
+  "Pixels before row contents, including the selection's left end.
+Keep this at least as large as the selection margin plus radius."
+  :type 'natnum
+  :group 'git-islands)
 
 (defconst git-islands-state-width 16 "Pixels a folder's chevron takes.")
 
@@ -72,19 +90,25 @@
 
 (defconst git-islands-toolbar-margin 6 "Pixels between a toolbar and the window's right edge.")
 
-(defcustom git-islands-row-height 1.65
+(defcustom git-islands-row-height 1.3
   "Height of a row, in frame character units."
   :type 'number
   :group 'git-islands)
 
-(defcustom git-islands-header-height 1.9
+(defcustom git-islands-header-height 1.5
   "Height of a tool window's header, in font units."
   :type 'number
   :group 'git-islands)
 
-(defcustom git-islands-header-ascent 68
-  "Percentage of the header's height above its text's baseline."
-  :type 'integer
+(defcustom git-islands-header-padding 4
+  "Minimum vertical padding in pixels on each side of header content."
+  :type 'natnum
+  :group 'git-islands)
+
+(defcustom git-islands-header-ascent nil
+  "Percentage of the header above the baseline, or nil to center its font.
+An explicit number preserves the alignment of existing configurations."
+  :type '(choice (const :tag "Automatic" nil) integer)
   :group 'git-islands)
 
 (defcustom git-islands-line-end-inset 0
@@ -110,7 +134,22 @@ configuration drawing rounded window corners there can set it."
 
 (defun git-islands-header-space (width)
   "Return a display spec WIDTH wide that gives a header its height."
-  `(space :width ,width :height ,git-islands-header-height :ascent ,git-islands-header-ascent))
+  (let* ((font (and (display-graphic-p) (face-font 'git-islands-header)))
+         (info (and font (font-info font)))
+         (font-height (if info (aref info 3) (frame-char-height)))
+         (font-ascent (if info (aref info 8) (* font-height 0.75)))
+         (content-height
+          (max font-height 16
+               (if (eq (bound-and-true-p git-islands-button-render-function)
+                       'git-islands-button-rounded)
+                   (round (* 1.4 (frame-char-height)))
+                 0)))
+         (height (max (ceiling (* font-height git-islands-header-height))
+                      (+ content-height (* 2 git-islands-header-padding))))
+         (ascent (or git-islands-header-ascent
+                     (round (* 100.0 (/ (+ font-ascent (/ (- height font-height) 2.0))
+                                        height))))))
+    `(space :width ,width :height (,height) :ascent ,ascent)))
 
 (defun git-islands-line-end-inset ()
   "Return the pixels kept free at the right end of this window's header."
@@ -165,25 +204,28 @@ COLOR, and also sets the row's height as `git-islands-strut' does.  MARGIN
 pixels, 0 by default, stay clear outside it, showing OUTSIDE or else the
 background of the face the string is drawn in."
   (let ((margin (or margin 0)))
-    (with-memoization (gethash (list side radius height color margin outside)
-                               git-islands-pill-cache)
-      (let ((width (+ margin radius)))
-        (git-islands-image-string
-         (format "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\
+    (if (zerop radius)
+        (propertize " " 'face (and outside `(:background ,outside))
+                    'display `(space :width (,margin) :height (,height)))
+      (with-memoization (gethash (list side radius height color margin outside)
+				 git-islands-pill-cache)
+	(let ((width (+ margin radius)))
+          (git-islands-image-string
+           (format "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>\
 %s<path d='%s' fill='%s'/></svg>"
-                 width height
-                 (if outside
-                     (format "<rect width='%d' height='%d' fill='%s'/>"
-                             width height (git-islands-svg-color outside))
-                   "")
-                 (if (eq side 'left)
-                     (format "M%d,0 A%d,%d 0 0 0 %d,%d V%d A%d,%d 0 0 0 %d,%d Z"
-                             width radius radius margin radius
-                             (- height radius) radius radius width height)
-                   (format "M0,0 A%d,%d 0 0 1 %d,%d V%d A%d,%d 0 0 1 0,%d Z"
-                           radius radius radius radius
-                           (- height radius) radius radius height))
-                 (git-islands-svg-color color)))))))
+                   width height
+                   (if outside
+                       (format "<rect width='%d' height='%d' fill='%s'/>"
+                               width height (git-islands-svg-color outside))
+                     "")
+                   (if (eq side 'left)
+                       (format "M%d,0 A%d,%d 0 0 0 %d,%d V%d A%d,%d 0 0 0 %d,%d Z"
+                               width radius radius margin radius
+                               (- height radius) radius radius width height)
+                     (format "M0,0 A%d,%d 0 0 1 %d,%d V%d A%d,%d 0 0 1 0,%d Z"
+                             radius radius radius radius
+                             (- height radius) radius radius height))
+                   (git-islands-svg-color color))))))))
 
 (defun git-islands-forget-pills (&rest _)
   "Draw pills again after the theme or font changed."
@@ -208,7 +250,7 @@ FACE, a selection face, highlights the row from a rounded left end."
           (propertize " " 'face face
                       'display `(space :width (,(- (+ git-islands-row-inset
                                                       (* depth git-islands-indent))
-                                                   (if face git-islands-row-inset 1)))))))
+                                                   (if face (+ git-islands-hl-margin git-islands-hl-radius) 1)))))))
 
 (defun git-islands-under-face (string face)
   "Return STRING with FACE, a selection face or nil, beneath its own faces.

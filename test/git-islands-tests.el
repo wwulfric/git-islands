@@ -22,6 +22,73 @@
 (require 'git-islands-merge3)
 (require 'git-islands-changelists)
 
+(ert-deftest git-islands-button-renderer-preserves-interaction ()
+  (let* ((git-islands-button-render-function
+          (lambda (label primary)
+            (should primary)
+            (concat "custom " label)))
+         (button (git-islands-button "Apply" #'ignore "Apply changes" t))
+         (map (get-text-property 0 'local-map button)))
+    (should (equal (substring-no-properties button) "custom Apply"))
+    (should (equal (get-text-property 0 'help-echo button) "Apply changes"))
+    (should (commandp (lookup-key map [header-line down-mouse-1])))
+    (should (eq (get-text-property 0 'mouse-face button) 'git-islands-toolbar-hover))))
+
+(ert-deftest git-islands-plain-and-rounded-button-fallback ()
+  (let ((git-islands-button-render-function #'git-islands-button-text))
+    (cl-letf (((symbol-function 'git-islands-button-image)
+               (lambda (&rest _) (ert-fail "Plain buttons must not render SVG"))))
+      (should-not (get-text-property 0 'display (git-islands-button "Commit" #'ignore "Commit" t)))))
+  (cl-letf (((symbol-function 'expui-icons-svg-p) (lambda () nil)))
+    (should (equal (git-islands-button-rounded "Commit" t)
+                   (git-islands-button-text "Commit" t)))))
+
+(ert-deftest git-islands-selection-spacing-follows-options ()
+  (let ((git-islands-hl-radius 0) (git-islands-hl-margin 0))
+    (should (= (git-islands-fit-margin) 4))
+    (should (eq (car (get-text-property 0 'display
+                                      (git-islands-ui-pill-end 'left 0 20 "red")))
+                'space)))
+  (let ((git-islands-hl-radius 6) (git-islands-hl-margin 6))
+    (should (= (git-islands-fit-margin) 16))))
+
+(ert-deftest git-islands-headers-share-style-and-restore-remapping ()
+  (dolist (mode '(git-islands-commit-mode git-islands-message-mode
+                  git-islands-log-mode git-islands-details-mode git-islands-refs-mode))
+    (with-temp-buffer
+      (funcall mode)
+      (should (member 'git-islands-header (cdr (assq 'header-line face-remapping-alist))))))
+  (with-temp-buffer
+    (face-remap-add-relative 'header-line 'bold)
+    (let ((before (copy-tree face-remapping-alist))
+          (git-islands-background-function (lambda () "#123456")))
+      (git-islands-header-style t)
+      (let ((once (copy-tree face-remapping-alist)))
+        (git-islands-header-style t)
+        (should (equal once face-remapping-alist))
+        (should (member '(:inherit git-islands-header :background "#123456")
+                        (cdr (assq 'header-line face-remapping-alist)))))
+      (git-islands-header-style nil)
+      (should (equal before face-remapping-alist)))))
+
+(ert-deftest git-islands-header-centers-font-and-keeps-explicit-ascent ()
+  (let ((git-islands-header-height 1.5)
+        (git-islands-header-padding 4)
+        (git-islands-header-ascent nil)
+        (git-islands-button-render-function #'git-islands-button-text))
+    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+              ((symbol-function 'face-font) (lambda (&rest _) "test-font"))
+              ((symbol-function 'font-info)
+               (lambda (&rest _) [nil nil 20 20 0 0 0 10 15 5])))
+      (let ((spec (cdr (git-islands-header-space 0))))
+        (should (equal (plist-get spec :height) '(30)))
+        (should (= (plist-get spec :ascent) 67)))
+      (let ((git-islands-header-ascent 68))
+        (should (= (plist-get (cdr (git-islands-header-space 0)) :ascent) 68)))
+      (let ((git-islands-button-render-function #'git-islands-button-rounded))
+        (cl-letf (((symbol-function 'frame-char-height) (lambda (&rest _) 30)))
+          (should (equal (plist-get (cdr (git-islands-header-space 0)) :height) '(50))))))))
+
 ;;;; Editor integration
 
 (ert-deftest git-islands-mode-lines-default-and-overrides ()

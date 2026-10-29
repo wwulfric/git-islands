@@ -378,11 +378,9 @@ entries, and without it the group is left out."
 ;;;; Header
 
 (defvar git-islands-commit-buttons
-  '(("general/refresh" git-islands-commit-refresh "Refresh (g)")
-    ("vcs/revert" git-islands-commit-rollback "Rollback (R)")
+  '(("vcs/revert" git-islands-commit-rollback "Rollback (R)")
     ("general/showAsTree" git-islands-commit-toggle-grouping "Group by Directory (t)")
-    ("general/moreVertical" git-islands-commit-options-menu "Options")
-    ("general/hide" git-islands-commit-hide "Hide (q)"))
+    ("general/moreVertical" git-islands-commit-options-menu "Options"))
   "Commit tool window buttons as (ICON ACTION HELP).
 ACTION is a command, or a function called with the click event.")
 
@@ -475,7 +473,7 @@ ACTION is a command, or a function called with the click event.")
   (git-islands-set-mode-line)
   ;; The message is written in the interface font, as the rows above.
   (face-remap-add-relative 'default 'git-islands-file-name)
-  (face-remap-add-relative 'header-line :inherit 'tab-line :height 1.0 :box nil)
+  (git-islands-header-style t)
   (setq-local line-spacing 0.25)
   (add-hook 'after-change-functions #'git-islands-message-update-placeholder nil t)
   ;; Air between the header's rule and the first line.

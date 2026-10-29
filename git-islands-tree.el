@@ -123,7 +123,12 @@ The chevron is drawn at its start; see `git-islands-tree-draw-chevron'."
 
 (defun git-islands-tool-header (format)
   "Return header FORMAT as `git-islands-header-function' shows it."
-  (funcall git-islands-header-function format))
+  (let ((header (copy-sequence format))
+        (border (face-attribute 'git-islands-header :box nil t)))
+    ;; Keep one continuous border across text, buttons and stretch spaces.
+    (unless (eq border 'unspecified)
+      (add-face-text-property 0 (length header) `(:box ,border) nil header))
+    (funcall git-islands-header-function header)))
 
 (defun git-islands-toolbar (buttons)
   "Return a toolbar of BUTTONS, as in `git-islands-commit-buttons'."
@@ -191,9 +196,7 @@ WRAP non-nil wraps long lines at word boundaries instead of fitting them."
   (setq-local auto-hscroll-mode nil)
   (use-local-map (make-composed-keymap (current-local-map) git-islands-view-mouse-map))
   (face-remap-add-relative 'default 'git-islands-file-name)
-  ;; Not inherited from the tab line, which a bottom card's gap row shrinks.
-  (face-remap-add-relative 'header-line :inherit 'git-islands-ui-font :height 1.0 :box nil
-                           :weight 'normal :background (git-islands-card-color))
+  (git-islands-header-style t)
   (add-hook 'post-command-hook #'git-islands-highlight nil t)
   (add-hook 'window-selection-change-functions #'git-islands-highlight nil t)
   (add-hook 'window-size-change-functions #'git-islands-fit-rows nil t)
@@ -270,8 +273,9 @@ It counts the row's indentation and disclosure chevron, which are not text."
          git-islands-state-width 0)
      (string-pixel-width (buffer-substring start end) (current-buffer))))
 
-(defconst git-islands-fit-margin (+ git-islands-hl-margin git-islands-hl-radius 4)
-  "Pixels kept clear at a row's end, for the selected row's rounded end.")
+(defun git-islands-fit-margin ()
+  "Return the pixels reserved for the selection's right end."
+  (+ git-islands-hl-margin git-islands-hl-radius 4))
 
 (defun git-islands-fit-rows (&optional window)
   "Shorten the names that WINDOW is too narrow for, at their end.
@@ -281,7 +285,7 @@ the current buffer."
     (when (and (window-live-p window) (display-graphic-p (window-frame window)))
       (with-current-buffer (window-buffer window)
         (when git-islands-view
-          (let ((room (- (window-body-width window t) git-islands-fit-margin
+          (let ((room (- (window-body-width window t) (git-islands-fit-margin)
                          (git-islands-row-end-inset window)))
                 (inhibit-read-only t))
             ;; The selected row's rounded end reaches the window's edge: measure
@@ -398,7 +402,12 @@ For editor buffers a diff or merge borrows, until it closes."
   (if enable
       (unless git-islands-header-cookie
         (setq git-islands-header-cookie
-              (face-remap-add-relative 'header-line :inherit 'tab-line :height 1.0 :box nil)))
+              (let ((background (and git-islands-background-function
+                                     (funcall git-islands-background-function))))
+                (if background
+                    (face-remap-add-relative 'header-line
+                                             :inherit 'git-islands-header :background background)
+                  (face-remap-add-relative 'header-line 'git-islands-header)))))
     (when git-islands-header-cookie
       (face-remap-remove-relative git-islands-header-cookie)
       (setq git-islands-header-cookie nil))))
@@ -413,6 +422,34 @@ Headers of editor windows otherwise take the buffer's own font."
   (propertize string 'git-islands-fit t))
 
 ;;;; Buttons
+
+(defcustom git-islands-button-render-function #'git-islands-button-text
+  "Function rendering a button's LABEL and PRIMARY flag as a string.
+Interaction and hover properties are added by Git Islands.  Use
+`git-islands-button-rounded' for SVG buttons, or provide your own function."
+  :type 'function
+  :group 'git-islands)
+
+(defcustom git-islands-button-radius nil
+  "Rounded button radius in pixels, or nil for half the button height."
+  :type '(choice (const :tag "Pill" nil) natnum)
+  :group 'git-islands)
+
+(defcustom git-islands-button-padding 12
+  "Horizontal padding in pixels on each side of a rounded button."
+  :type 'natnum
+  :group 'git-islands)
+
+(defun git-islands-button-text (label primary)
+  "Return a plain text button for LABEL and PRIMARY."
+  (propertize (concat " " label " ")
+              'face (if primary 'git-islands-primary-button 'git-islands-button)))
+
+(defun git-islands-button-rounded (label primary)
+  "Return a rounded button for LABEL and PRIMARY, with a text fallback."
+  (if (expui-icons-svg-p)
+      (propertize label 'display (git-islands-button-image label primary))
+    (git-islands-button-text label primary)))
 
 (defun git-islands-button-height ()
   "Return the pixel height of a header button, with air above and below."
@@ -431,14 +468,15 @@ It is one image: a text's background would fill the header's height."
          (family (let ((family (face-attribute 'git-islands-ui-font :family nil t)))
                    (if (stringp family) family "sans-serif")))
          (height (git-islands-button-height))
-         (key (list label background foreground family size height)))
+         (radius (min (/ height 2.0) (or git-islands-button-radius (/ height 2.0))))
+         (key (list label background foreground family size height radius git-islands-button-padding)))
     (or (gethash key git-islands-button-cache)
         (puthash key
                  (let* ((width (+ (string-pixel-width
                                    (propertize label 'face 'git-islands-file-name))
-                                  24))
+                                  (* 2 git-islands-button-padding)))
                         (svg (svg-create width height)))
-                   (svg-rectangle svg 0 0 width height :rx (/ height 2.0) :fill background)
+                   (svg-rectangle svg 0 0 width height :rx radius :fill background)
                    (svg-text svg label :x (/ width 2.0) :y (/ height 2.0)
                              :text-anchor "middle" :dominant-baseline "central"
                              :font-family family :font-size size :fill foreground)
@@ -446,13 +484,10 @@ It is one image: a text's background would fill the header's height."
                  git-islands-button-cache))))
 
 (defun git-islands-button (label action help &optional primary)
-  "Return a pill-shaped header button LABEL running ACTION, tooltip HELP.
-PRIMARY draws it in the accent color, as IntelliJ's default button."
+  "Return a button LABEL running ACTION, with tooltip HELP.
+PRIMARY identifies the default action to the configured renderer."
   (git-islands-header-button action help
-                             (if (display-images-p)
-                                 (propertize label 'display (git-islands-button-image label primary))
-                               (propertize (concat " " label " ")
-                                           'face (if primary 'git-islands-primary-button 'git-islands-button)))))
+                            (funcall git-islands-button-render-function label primary)))
 
 (add-hook 'enable-theme-functions (lambda (&rest _) (clrhash git-islands-button-cache)))
 
