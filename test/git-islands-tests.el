@@ -89,6 +89,13 @@
         (cl-letf (((symbol-function 'frame-char-height) (lambda (&rest _) 30)))
           (should (equal (plist-get (cdr (git-islands-header-space 0)) :height) '(50))))))))
 
+(ert-deftest git-islands-header-delegates-exact-editor-metrics ()
+  (let ((git-islands-header-space-function
+         (lambda (width) `(space :width ,width :height 1.9 :ascent 68))))
+    (dolist (width '(0 (12)))
+      (should (equal (git-islands-header-space width)
+                     `(space :width ,width :height 1.9 :ascent 68))))))
+
 ;;;; Editor integration
 
 (ert-deftest git-islands-mode-lines-default-and-overrides ()
@@ -162,6 +169,55 @@
           (let ((height (window-total-height message-window)))
             (git-islands-commit-show root)
             (should (= (window-total-height message-window) height))))))))
+
+(ert-deftest git-islands-message-minimum-body-survives-layout ()
+  (git-islands-test-with-repo
+    (save-window-excursion
+      (delete-other-windows)
+      (git-islands-commit-show root)
+      (let ((window (git-islands-message-window))
+            (git-islands-message-min-body-lines 4))
+        (window-preserve-size window nil nil)
+        (window-resize window (- 3 (window-total-height window)) nil t)
+        (git-islands-message-ensure-height)
+        (should (>= (window-body-height window t) (* 4 (frame-char-height))))))))
+
+(ert-deftest git-islands-diff-restores-soft-wrapping ()
+  (dolist (local '(nil t))
+    (with-temp-buffer
+      (let ((truncate-lines nil) (truncate-partial-width-windows nil))
+        (when local
+          (setq-local truncate-lines nil truncate-partial-width-windows nil))
+        (git-islands-diff-mode 1)
+        (git-islands-diff-mode 1)
+        (should truncate-lines)
+        (should truncate-partial-width-windows)
+        (git-islands-diff-mode -1)
+        (should-not truncate-lines)
+        (should-not truncate-partial-width-windows)
+        (should (eq (local-variable-p 'truncate-lines) local))
+        (should (eq (local-variable-p 'truncate-partial-width-windows) local))))))
+
+(ert-deftest git-islands-diff-header-fit-keeps-tooltip ()
+  (cl-letf (((symbol-function 'string-pixel-width) #'string-width))
+    (let ((text (git-islands-diff-header-fit "HEAD very/long/path.el" 10)))
+      (should (<= (string-width text) 10))
+      (should (string-suffix-p "…" text))
+      (should (equal (get-text-property 0 'help-echo text) "HEAD very/long/path.el")))))
+
+(ert-deftest git-islands-diff-overlays-keep-personal-line-metrics ()
+  (with-temp-buffer
+    (insert "a\nb\n")
+    (let ((default-text-properties '(line-height 1.2 line-spacing 0.2)))
+      (git-islands-diff-mark (point-min) (point-max) 'git-islands-diff-modified)
+      (git-islands-diff-fill 2 2)
+      (git-islands-diff-preserve-spacing (current-buffer))
+      (dolist (overlay (overlays-in (point-min) (point-max)))
+        (should (= (overlay-get overlay 'line-height) 1.2))
+        (should (= (overlay-get overlay 'line-spacing) 0.2))
+        (when-let* ((string (overlay-get overlay 'before-string)))
+          (should (= (get-text-property 0 'line-height string) 1.2))
+          (should (= (get-text-property 0 'line-spacing string) 0.2)))))))
 
 ;;;; Parsing
 

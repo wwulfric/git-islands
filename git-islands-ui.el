@@ -100,6 +100,13 @@ Keep this at least as large as the selection margin plus radius."
   :type 'number
   :group 'git-islands)
 
+(defcustom git-islands-header-space-function nil
+  "Optional function returning a header spacer display spec for WIDTH.
+Use this to share exact height and baseline metrics with the surrounding
+editor.  Nil uses Git Islands' automatic font and content measurements."
+  :type '(choice (const :tag "Automatic" nil) function)
+  :group 'git-islands)
+
 (defcustom git-islands-header-padding 4
   "Minimum vertical padding in pixels on each side of header content."
   :type 'natnum
@@ -134,6 +141,12 @@ configuration drawing rounded window corners there can set it."
 
 (defun git-islands-header-space (width)
   "Return a display spec WIDTH wide that gives a header its height."
+  (if git-islands-header-space-function
+      (funcall git-islands-header-space-function width)
+    (git-islands-default-header-space width)))
+
+(defun git-islands-default-header-space (width)
+  "Return an automatically measured header spacer for WIDTH."
   (let* ((font (and (display-graphic-p) (face-font 'git-islands-header)))
          (info (and font (font-info font)))
          (font-height (if info (aref info 3) (frame-char-height)))

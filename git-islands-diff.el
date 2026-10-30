@@ -42,6 +42,9 @@ and buffer-local status.  This does not enable a global line number mode."
 (defvar-local git-islands-diff--saved-line-numbers nil
   "Saved (LOCAL VALUE) for line numbers temporarily enabled by Diff.")
 
+(defvar-local git-islands-diff--saved-wrapping nil
+  "Previous localness and values of wrapping settings while Diff is active.")
+
 ;;;; Faces
 
 (defface git-islands-diff-modified
@@ -184,6 +187,14 @@ LINE is on the left side if FROM-LEFT, else on the right side."
   :keymap git-islands-diff-mode-map
   (if git-islands-diff-mode
       (progn
+        (unless git-islands-diff--saved-wrapping
+          (setq git-islands-diff--saved-wrapping
+                (mapcar (lambda (symbol)
+                          (list symbol (local-variable-p symbol) (symbol-value symbol)))
+                        '(truncate-lines truncate-partial-width-windows)))
+          ;; Alignment fillers count logical lines, so never soft-wrap either side.
+          (setq-local truncate-lines t
+                      truncate-partial-width-windows t))
         (when (and git-islands-diff-line-numbers
                    (null display-line-numbers)
                    (null git-islands-diff--saved-line-numbers))
@@ -198,6 +209,12 @@ LINE is on the left side if FROM-LEFT, else on the right side."
         (when buffer-read-only
           (setq-local minor-mode-overriding-map-alist
                       (list (cons 'git-islands-diff-mode git-islands-diff-read-only-map)))))
+    (when git-islands-diff--saved-wrapping
+      (dolist (setting git-islands-diff--saved-wrapping)
+        (pcase-let ((`(,symbol ,local ,value) setting))
+          (if local (set (make-local-variable symbol) value)
+            (kill-local-variable symbol))))
+      (setq git-islands-diff--saved-wrapping nil))
     (when git-islands-diff--saved-line-numbers
       (pcase-let ((`(,local ,value) git-islands-diff--saved-line-numbers))
         (if local
@@ -306,6 +323,19 @@ LINE is on the left side if FROM-LEFT, else on the right side."
              (with-current-buffer right (copy-marker (cdr right-region)))
              '((face . git-islands-diff-word) (git-islands-diff . t) (priority . -5)))))))))
 
+(defun git-islands-diff-preserve-spacing (buffer)
+  "Keep BUFFER's default line metrics on diff overlays and filler strings.
+An overlay face can otherwise suppress default text properties, making
+highlighted lines shorter than surrounding code in personal configurations."
+  (with-current-buffer buffer
+    (dolist (overlay (overlays-in (point-min) (point-max)))
+      (when (overlay-get overlay 'git-islands-diff)
+        (dolist (property '(line-height line-spacing))
+          (let ((value (plist-get default-text-properties property)))
+            (overlay-put overlay property value)
+            (when-let* ((string (overlay-get overlay 'before-string)))
+              (put-text-property 0 (length string) property value string))))))))
+
 (defun git-islands-diff-refresh (session)
   "Compute SESSION's differences again and mark them."
   (when (and (buffer-live-p (git-islands-diff-session-left session))
@@ -314,6 +344,8 @@ LINE is on the left side if FROM-LEFT, else on the right side."
           (git-islands-diff-texts (git-islands-diff-session-left session)
                                   (git-islands-diff-session-right session)))
     (git-islands-diff-decorate session)
+    (git-islands-diff-preserve-spacing (git-islands-diff-session-left session))
+    (git-islands-diff-preserve-spacing (git-islands-diff-session-right session))
     (force-mode-line-update t)))
 
 (defun git-islands-diff-changed (&rest _)
@@ -500,31 +532,54 @@ LINE is on the left side if FROM-LEFT, else on the right side."
 
 ;;;; Headers
 
+(defun git-islands-diff-header-fit (text pixels)
+  "Fit TEXT into PIXELS, keeping properties and the full text as a tooltip."
+  (let ((result text))
+    (when (> (string-pixel-width result) pixels)
+      (let ((length (length text)))
+        (while (and (> length 0)
+                    (> (string-pixel-width
+                        (concat (substring text 0 length) "…")) pixels))
+          (setq length (1- length)))
+        (setq result (if (> pixels (string-pixel-width "…"))
+                         (concat (substring text 0 length) "…") ""))))
+    (propertize result 'help-echo (substring-no-properties text))))
+
 (defun git-islands-diff-header (left)
-  "Return the header of the diff's LEFT side, or of its right side."
+  "Return a width-aware header for the diff's LEFT or right side."
   (let* ((session git-islands-diff-current)
          (count (length (git-islands-diff-session-hunks session)))
+         (width (max 0 (- (window-body-width nil t) 24
+                          (git-islands-line-end-inset))))
          (label (if left (git-islands-diff-session-left-label session)
-                  (git-islands-diff-session-right-label session))))
+                  (git-islands-diff-session-right-label session)))
+         (title (concat (propertize label 'face 'git-islands-title)
+                        (git-islands-ui (concat "  " (git-islands-diff-session-path session))
+                                        'git-islands-dim)))
+         (actions
+          (unless left
+            (mapconcat
+             (pcase-lambda (`(,icon ,action ,help))
+               (git-islands-header-button action help
+                                         (expui-icons-icon icon :face 'git-islands-neutral-icon)))
+             (append
+              (when (>= width 100)
+                '(("general/up" git-islands-diff-previous "Previous Difference (S-F7)")
+                  ("general/down" git-islands-diff-next "Next Difference (F7)")))
+              (when (>= width 220)
+                '(("vcs/diff" git-islands-diff-unified "Unified Diff in Magit (C-c C-u)")))
+              '(("general/close" git-islands-diff-quit "Close (C-c C-k)")))
+             (git-islands-space 6))))
+         (summary (git-islands-ui (format "%d differences  " count) 'git-islands-dim))
+         (right (concat (when (and actions
+                                   (> width (+ (string-pixel-width actions)
+                                               (string-pixel-width summary) 180)))
+                          summary)
+                        actions))
+         (room (max 0 (- width (string-pixel-width right) (if actions 12 0)))))
     (concat (propertize " " 'display (git-islands-header-space '(12)))
-            (propertize label 'face 'git-islands-title)
-            (git-islands-ui (concat "  " (git-islands-diff-session-path session)) 'git-islands-dim)
-            (unless left
-              (git-islands-at-right
-               (concat (git-islands-ui (format "%d %s  " count (if (= count 1) "difference" "differences"))
-                                       'git-islands-dim)
-                       (git-islands-header-button #'git-islands-diff-previous "Previous Difference (S-F7)"
-                                                  (expui-icons-icon "general/up" :face 'git-islands-neutral-icon))
-                       (git-islands-space 6)
-                       (git-islands-header-button #'git-islands-diff-next "Next Difference (F7)"
-                                                  (expui-icons-icon "general/down" :face 'git-islands-neutral-icon))
-                       (git-islands-space 6)
-                       (git-islands-header-button #'git-islands-diff-unified "Unified Diff in Magit (C-c C-u)"
-                                                  (expui-icons-icon "vcs/diff" :face 'git-islands-neutral-icon))
-                       (git-islands-space 6)
-                       (git-islands-header-button #'git-islands-diff-quit "Close (C-c C-k)"
-                                                  (expui-icons-icon "general/close" :face 'git-islands-neutral-icon))
-                       (git-islands-space 10)))))))
+            (git-islands-diff-header-fit title room)
+            (when actions (git-islands-at-right right (git-islands-line-end))))))
 
 ;;;; Entry point
 

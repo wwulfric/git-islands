@@ -249,6 +249,27 @@ entries, and without it the group is left out."
         (git-islands-in-editor #'find-file file)
       (user-error "%s was deleted" (file-name-nondirectory file)))))
 
+(defvar git-islands-message-resizing nil)
+
+(defun git-islands-message-ensure-height (&optional frame)
+  "Keep FRAME's commit message body usable after layout changes."
+  (unless git-islands-message-resizing
+    (when-let* ((window (git-islands-message-window frame)))
+      (let* ((git-islands-message-resizing t)
+             (line-height (frame-char-height (window-frame window)))
+             (minimum (* git-islands-message-min-body-lines line-height))
+             ;; Size preservation can round a sub-line adjustment back down.
+             (delta (* line-height (ceiling (- minimum (window-body-height window t))
+                                            line-height))))
+        (when (> delta 0)
+          ;; Take space from the adjacent Commit list, when available.
+          (let ((available (window-resizable window delta nil 'preserved t)))
+            (when (> available 0)
+              (window-resize window available nil 'preserved t)
+              (window-preserve-size window nil t))))))))
+
+(add-hook 'window-size-change-functions #'git-islands-message-ensure-height)
+
 (defun git-islands-commit-show-diff ()
   "Show the file at point side by side with HEAD, or fold the row at point."
   (interactive)
@@ -650,6 +671,7 @@ it off brings back what was typed before."
       ;; As wide as asked, whatever the frame's width does later.
       (git-islands-pane-keep window (lambda () (* (git-islands-side-width) (frame-char-width))))
       (git-islands-refresh root)
+      (git-islands-message-ensure-height)
       window)))
 
 (defun git-islands-commit-hide (&optional frame)

@@ -75,6 +75,13 @@ buffer is a tool buffer.  Set it before opening the Commit tool window."
   :type '(choice integer function)
   :group 'git-islands)
 
+(defcustom git-islands-message-min-body-lines 4
+  "Minimum visible body height of the commit message, in frame text lines.
+Header and mode line are additional.  Zero disables the minimum.  Larger
+manually resized windows are left alone."
+  :type 'natnum
+  :group 'git-islands)
+
 (defcustom git-islands-message-window-height 8
   "Initial total height of the Commit message window.
 An integer counts lines, including the header and mode line; a float

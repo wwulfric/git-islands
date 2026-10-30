@@ -229,8 +229,18 @@ color or set it to nil to hide it. Height is measured from the header font,
 with room for icons and rounded buttons. `git-islands-header-padding` controls
 the minimum padding above and below content. `git-islands-header-ascent` defaults to nil for automatic
 vertical centering; explicit percentages remain supported.
+For exact alignment with another editor component, set
+`git-islands-header-space-function` to a function taking WIDTH and returning
+a spacer display spec. Nil retains the automatic default measurements.
 Keep `git-islands-ui-font` limited to font attributes: inheriting `default`
 on inline text also imports its background, covering the header beneath it.
+
+The commit message body keeps at least four frame text lines after layout
+changes; customize `git-islands-message-min-body-lines` (zero disables this).
+Diff temporarily disables soft wrapping so logical lines stay aligned, then
+restores each buffer’s prior wrapping settings on exit. Highlight overlays and
+filler lines preserve the buffer’s default line-height and line-spacing. Narrow Diff headers
+shorten paths (full text in the tooltip) and retain essential navigation.
 
 [examples/style.el](examples/style.el) combines these settings into an optional,
 standalone file. Load it after your theme with

@@ -34,3 +34,19 @@ in `*Messages*`; it can be removed after closing the demo Emacs.
 Wait for the log to populate, then capture the Emacs window. The committed
 PNG includes the native title bar and toolbar, without the desktop or a
 window shadow. No UI elements are redrawn or composited.
+
+## Latest personal configuration capture
+
+The current `hero.png` loads the actual `.emacs.d/early-init.el` and
+`.emacs.d/init.el`, including Ink, islands, tabs, sidebar integration and the
+status bar, in a separate graphical Emacs process. It uses the same temporary
+Git fixture as `emacs-q.png`. Runtime history/workspace files are redirected
+to a temporary `user-emacs-directory`; the existing Tree-sitter grammar path
+is supplied explicitly. No personal faces or pane sizes are overridden.
+
+After startup completes, the personal frame is resized to 1300 × 830 content
+pixels (startup frame settings otherwise restore 800 × 750). The bare frame
+uses `-g 180x55`. Both images are direct window captures, including native
+window chrome. The commit message area uses the package’s minimum-body-height policy; it
+is not manually resized for the screenshot. Diff disables soft wrapping
+while open, including in the personal configuration.

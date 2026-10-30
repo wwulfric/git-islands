@@ -209,8 +209,16 @@ Commit 和 Log 不再显示刷新、隐藏图标，仍可使用 `g` 和 `q`；Lo
 高度按表头字体计算，并为图标和圆角按钮留出空间。
 `git-islands-header-padding` 控制内容上下的最小留白。`git-islands-header-ascent` 默认 nil，
 自动计算文字的垂直居中；已有配置中的百分比数值仍然有效。
+需要与编辑器其他组件精确对齐时，可设置 `git-islands-header-space-function`，
+函数接收 WIDTH 并返回撑高空白的 display spec；nil 保留库的自动测量。
 `git-islands-ui-font` 只应设置字体属性；让行内文字继承 `default` 会连同背景一起继承，
 覆盖表头本身的背景。
+
+布局变化后，提交信息正文至少保留四个字体行高，可通过
+`git-islands-message-min-body-lines` 调整（0 表示关闭保底）。
+Diff 期间暂时关闭软换行，保证逻辑行对齐，退出后恢复原来的局部设置。
+差异高亮与补齐空行同时保留缓冲区默认的行高和行距。
+窄窗格中路径会缩短，悬停可查看全文；操作区优先保留必要导航。
 
 [examples/style.el](examples/style.el) 将以上设置组合为可选的独立示例。
 在主题之后执行 `(load "/path/to/git-islands/examples/style.el")` 即可加载。
