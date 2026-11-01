@@ -1109,4 +1109,32 @@
             (should (= resizes 0))))
       (set-window-parameter window 'git-islands-pane-width old-width))))
 
+(ert-deftest git-islands-pane-knows-a-drag ()
+  ;; `this-command' names no drag: its motions run from a transient map.
+  (let ((this-command nil))
+    (let ((track-mouse 'dragging)
+          (last-input-event '(mouse-movement)))
+      (should (git-islands-pane--dragged-p)))
+    (let ((track-mouse nil)
+          (last-input-event '(drag-mouse-1)))
+      (should (git-islands-pane--dragged-p)))
+    (let ((track-mouse nil)
+          (last-input-event ?a))
+      (should-not (git-islands-pane--dragged-p)))))
+
+(ert-deftest git-islands-pane-ends-with-its-buffer ()
+  (let ((window (selected-window))
+        (shown (window-buffer))
+        (width #'ignore))
+    (unwind-protect
+        (with-temp-buffer
+          (set-window-parameter window 'git-islands-pane-width width)
+          (set-window-parameter window 'git-islands-pane-buffer shown)
+          (should (eq (git-islands-pane--width window) width))
+          (set-window-buffer window (current-buffer))
+          (should-not (git-islands-pane--width window)))
+      (set-window-buffer window shown)
+      (set-window-parameter window 'git-islands-pane-width nil)
+      (set-window-parameter window 'git-islands-pane-buffer nil))))
+
 ;;; git-islands-tests.el ends here

@@ -331,7 +331,15 @@ A side pane resized by `git-islands-pane-fit' calls it.")
   "Keep side pane WINDOW as wide as WIDTH, a function returning pixels."
   (when (window-live-p window)
     (set-window-parameter window 'git-islands-pane-width width)
+    (set-window-parameter window 'git-islands-pane-buffer (window-buffer window))
     (git-islands-pane-fit (window-frame window))))
+
+(defun git-islands-pane--width (window)
+  "Return the function giving side pane WINDOW's width, or nil.
+A side window kept for showing another buffer is no pane any more."
+  (and (memq (window-parameter window 'git-islands-pane-buffer)
+             (list nil (window-buffer window)))
+       (window-parameter window 'git-islands-pane-width)))
 
 (defun git-islands-pane-fit (frame)
   "Give FRAME's side panes their widths, and fit their rows to them.
@@ -345,7 +353,7 @@ each pane's rows are fitted here too."
         (window-resize-pixelwise t)
         panes)
     (dolist (window (window-list frame 'no-minibuffer))
-      (when-let* ((width (window-parameter window 'git-islands-pane-width)))
+      (when-let* ((width (git-islands-pane--width window)))
         (push window panes)
         (let ((delta (- (funcall width) (window-pixel-width window))))
           ;; Even a zero-delta resize applies a new window configuration.
@@ -356,23 +364,32 @@ each pane's rows are fitted here too."
         (funcall git-islands-refit-function window)))
     (set-frame-parameter frame 'git-islands-pane-frame-width (frame-pixel-width frame))))
 
+(defun git-islands-pane--dragged-p ()
+  "Return non-nil when a mouse drag is resizing windows, or has just ended.
+`mouse-drag-line' only starts the drag: each motion runs from a transient
+map, so `this-command' does not name it, and it marks the drag in
+`track-mouse' instead.  Releasing the button clears that, possibly before
+the redisplay that runs the size hooks for the last motion."
+  (or (eq track-mouse 'dragging)
+      (and (consp last-input-event)
+           (memq 'drag (event-modifiers last-input-event)))))
+
 (defun git-islands-pane-follow (frame)
   "Size FRAME's side panes again after its windows changed size.
 A pane its divider was dragged for keeps its new share of the frame;
 after any other change, such as the frame's width or another window
 showing, each pane takes its own width again."
   (unless git-islands-pane--fitting
-    (let ((panes (seq-filter (lambda (window) (window-parameter window 'git-islands-pane-width))
+    (let ((panes (seq-filter #'git-islands-pane--width
                              (window-list frame 'no-minibuffer))))
-      (if (memq this-command '(mouse-drag-vertical-line mouse-drag-mode-line
-                               mouse-drag-header-line))
+      (if (git-islands-pane--dragged-p)
           (dolist (window panes)
             (let ((share (/ (float (window-pixel-width window)) (frame-pixel-width frame))))
               (set-window-parameter window 'git-islands-pane-width
                                     (lambda () (round (* share (frame-pixel-width frame)))))))
         (when (seq-some (lambda (window)
                           (/= (window-pixel-width window)
-                              (funcall (window-parameter window 'git-islands-pane-width))))
+                              (funcall (git-islands-pane--width window))))
                         panes)
           (git-islands-pane-fit frame))))))
 
