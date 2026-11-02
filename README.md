@@ -37,9 +37,11 @@ fonts, faces and toolbar. [Reproduce this demo](docs/screenshots.md).
 
 ## Install
 
-With `package-vc` (Emacs 29):
+With `package-vc` (Emacs 29). expui-icons is in no package archive, so install it
+first:
 
 ```elisp
+(package-vc-install "https://github.com/wwulfric/expui-icons")
 (package-vc-install "https://github.com/wwulfric/git-islands")
 ```
 

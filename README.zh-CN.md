@@ -34,9 +34,10 @@
 
 ## 安装
 
-用 `package-vc`（Emacs 29）安装：
+用 `package-vc`（Emacs 29）安装。expui-icons 不在任何软件源里，要先装它：
 
 ```elisp
+(package-vc-install "https://github.com/wwulfric/expui-icons")
 (package-vc-install "https://github.com/wwulfric/git-islands")
 ```
 
