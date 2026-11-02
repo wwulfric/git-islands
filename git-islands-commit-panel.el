@@ -17,7 +17,7 @@
 
 (require 'cl-lib)
 (require 'subr-x)
-(require 'magit)
+(require 'magit-section)
 (require 'git-islands-core)
 (require 'git-islands-tree)
 (require 'git-islands-diff)
@@ -25,6 +25,7 @@
 (require 'git-islands-changelists)
 (require 'git-islands-branches)
 
+(declare-function magit-process-buffer "magit-process" (&optional nodisplay))
 
 (defvar git-islands-commit-group-by-directory t
   "Non-nil groups changed files by folder; nil lists them flat.")
