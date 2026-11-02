@@ -31,9 +31,13 @@ defaults. It does not change this checkout or your Emacs configuration.
 The temporary repository path is available in `git-islands-demo-root` and
 in `*Messages*`; it can be removed after closing the demo Emacs.
 
-Wait for the log to populate, then capture the Emacs window. The committed
-PNG includes the native title bar and toolbar, without the desktop or a
-window shadow. No UI elements are redrawn or composited.
+Wait for the log to populate, then capture the Emacs window, without the
+desktop or the system's window shadow. The capture includes the native title
+bar and toolbar. No UI elements are redrawn or composited.
+
+Each committed PNG then gets a transparent 28-point margin holding a soft drop
+shadow and a thin gray outline, following the window's own shape, so that the
+window stands out on both light and dark pages. The window's pixels are unchanged.
 
 ## Latest personal configuration capture
 
@@ -46,7 +50,7 @@ is supplied explicitly. No personal faces or pane sizes are overridden.
 
 After startup completes, the personal frame is resized to 1300 × 830 content
 pixels (startup frame settings otherwise restore 800 × 750). The bare frame
-uses `-g 180x55`. Both images are direct window captures, including native
-window chrome. The commit message area uses the package’s minimum-body-height policy; it
+uses `-g 180x55`. Both images are window captures, including native window
+chrome, with the margin described above. The commit message area uses the package’s minimum-body-height policy; it
 is not manually resized for the screenshot. Diff disables soft wrapping
 while open, including in the personal configuration.
