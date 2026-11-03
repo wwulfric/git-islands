@@ -351,14 +351,25 @@ each pane's rows are fitted here too."
         ;; An unreachable target then retries on every size hook, even for
         ;; echo-area changes, resetting the editor's pixel scroll offset.
         (window-resize-pixelwise t)
+        (windows (window-list frame 'no-minibuffer))
+        (neighbors nil)
         panes)
-    (dolist (window (window-list frame 'no-minibuffer))
+    ;; Resizing a side pane can also take width from the central log.
+    ;; Record its body width before moving either divider.
+    (dolist (window windows)
+      (when (and (buffer-local-value 'git-islands-view (window-buffer window))
+                 (not (git-islands-pane--width window)))
+        (push (cons window (window-body-width window t)) neighbors)))
+    (dolist (window windows)
       (when-let* ((width (git-islands-pane--width window)))
         (push window panes)
         (let ((delta (- (funcall width) (window-pixel-width window))))
           ;; Even a zero-delta resize applies a new window configuration.
           (unless (zerop delta)
             (ignore-errors (window-resize window delta t t t))))))
+    (dolist (entry neighbors)
+      (unless (= (cdr entry) (window-body-width (car entry) t))
+        (push (car entry) panes)))
     (dolist (window panes)
       (with-current-buffer (window-buffer window)
         (funcall git-islands-refit-function window)))
