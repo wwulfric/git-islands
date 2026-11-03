@@ -301,7 +301,7 @@ Nil selects the commit at point alone.")
   (remove-hook 'window-size-change-functions #'git-islands-fit-rows t)
   (remove-hook 'window-buffer-change-functions #'git-islands-fit-rows t)
   (jit-lock-register #'git-islands-log-fontify)
-  (setq-local git-islands-refit-function (lambda (_window) (jit-lock-refontify)))
+  (setq-local git-islands-refit-function #'git-islands-log-resized)
   (add-hook 'window-size-change-functions #'git-islands-log-resized nil t)
   (add-hook 'window-scroll-functions #'git-islands-log-scrolled nil t)
   (add-hook 'post-command-hook #'git-islands-log-after-command nil t)
@@ -556,9 +556,20 @@ and shorten its subject to fit before them."
                              (truncate-string-pixelwise subject (max 0 room)
                                                         (current-buffer) "…")))))))
 
-(defun git-islands-log-resized (_window)
-  "Fit the subjects again after the window's width changed."
-  (jit-lock-refontify))
+(defun git-islands-log-resized (window)
+  "Refit the visible rows of WINDOW before the next paint.
+Rows outside the viewport are fitted on demand when scrolled into view."
+  (with-selected-window window
+    (jit-lock-refontify)
+    ;; During a side-window switch the previous glyphs may still be on
+    ;; screen.  Marking them for JIT alone can leave a clipped first frame.
+    ;; Count rows instead of asking redisplay for a new window-end here.
+    (let ((start (window-start window)))
+      (save-excursion
+        (goto-char start)
+        (forward-line (1+ (window-body-height window)))
+        (jit-lock-fontify-now start (point))))
+    (force-window-update window)))
 
 (defun git-islands-log-scrolled (window _start)
   "Read more commits when WINDOW nears the end of those listed."
