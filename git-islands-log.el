@@ -253,9 +253,11 @@ is live does not tell whether the page is in.")
   "Commit the details pane shows, or the list of commits when several.")
 (defvar-local git-islands-log-marked nil
   "Hashes of the selected commits when several are, or nil.
-Nil selects the commit at point alone.")
+Nil selects the commit at `git-islands-log-row' alone.")
 (defvar-local git-islands-log-anchor nil "Hash a range selection extends from.")
-(defvar-local git-islands-log-row nil "Start of the row at point after the last command.")
+(defvar-local git-islands-log-row nil "Start of the last explicitly selected row.")
+(defvar-local git-islands-log-command-row nil
+  "Row at the start of a command, before it can move point.")
 (defvar-local git-islands-log-details-timer nil "Pending update of the details pane.")
 (defvar-local git-islands-log-generation 0
   "Bumped by every reload, so output of an older process is ignored.")
@@ -304,6 +306,7 @@ Nil selects the commit at point alone.")
   (setq-local git-islands-refit-function #'git-islands-log-resized)
   (add-hook 'window-size-change-functions #'git-islands-log-resized nil t)
   (add-hook 'window-scroll-functions #'git-islands-log-scrolled nil t)
+  (add-hook 'pre-command-hook #'git-islands-log-before-command nil t)
   (add-hook 'post-command-hook #'git-islands-log-after-command nil t)
   (add-hook 'kill-buffer-hook #'git-islands-log-stop nil t))
 
@@ -365,6 +368,7 @@ Filtering by user or text leaves gaps the graph cannot join."
         git-islands-log-partial ""
         git-islands-log-done nil
         git-islands-log-shown nil
+        git-islands-log-row nil
         git-islands-log-marked nil
         git-islands-log-anchor nil
         git-islands-log-head (git-islands-head git-islands-log-root))
@@ -467,6 +471,7 @@ A window too narrow for the column hides it; see
         (progn
           (setq git-islands-log-select nil)
           (goto-char position)
+          (setq git-islands-log-row position)
           (dolist (window (get-buffer-window-list (current-buffer) nil t))
             (set-window-point window position)
             (with-selected-window window (recenter)))
@@ -602,7 +607,7 @@ Rows outside the viewport are fitted on demand when scrolled into view."
 (defun git-islands-log-selected-rows ()
   "Return the starts of the selected rows, in order."
   (if (not git-islands-log-marked)
-      (list (pos-bol))
+      (list (or git-islands-log-row (pos-bol)))
     (let ((marked (make-hash-table :test #'equal))
           rows)
       (dolist (hash git-islands-log-marked) (puthash hash t marked))
@@ -692,14 +697,44 @@ Rows outside the viewport are fitted on demand when scrolled into view."
   "Return what tells SHOWN, a commit or a list of them, apart."
   (if (listp shown) (mapcar #'git-islands-commit-hash shown) shown))
 
+(defun git-islands-log-scroll-command-p ()
+  "Whether the current command scrolls without selecting a commit."
+  (or (get this-command 'scroll-command)
+      (memq this-command
+            '(mwheel-scroll pixel-scroll-precision
+              pixel-scroll-interpolate-down pixel-scroll-interpolate-up
+              scroll-up scroll-down scroll-up-command scroll-down-command
+              scroll-bar-toolkit-scroll scroll-bar-drag))))
+
+(defun git-islands-log-before-command ()
+  "Remember point before a command, independently of redisplay moves."
+  ;; Keyboard navigation continues from the selection even if scrolling
+  ;; has pushed it off screen and relocated the window's point.
+  (when (and git-islands-log-row
+             (memq this-command '(next-line previous-line
+                                  git-islands-log-extend-down
+                                  git-islands-log-extend-up)))
+    (goto-char git-islands-log-row))
+  (setq git-islands-log-command-row (pos-bol)))
+
 (defun git-islands-log-after-command ()
   "Highlight the selected rows and show their commits in the details pane."
-  ;; A move to another row selects that row alone, as a click does.
-  (unless (or (eql (pos-bol) git-islands-log-row)
-              (memq this-command git-islands-log-selecting-commands))
-    (setq git-islands-log-marked nil
-          git-islands-log-anchor nil))
-  (setq git-islands-log-row (pos-bol))
+  ;; Scrolling and redisplay may move point into the viewport.  Neither
+  ;; should change the selection, including after a later nonmoving command.
+  (when (or (null git-islands-log-row)
+            (and (not (git-islands-log-scroll-command-p))
+                 (or (and git-islands-log-command-row
+                          (/= (pos-bol) git-islands-log-command-row))
+                     (memq this-command '(mouse-set-point mouse-drag-region
+                                          next-line previous-line
+                                          beginning-of-buffer end-of-buffer))
+                     (memq this-command git-islands-log-selecting-commands))))
+    (unless (or (eql (pos-bol) git-islands-log-row)
+                (memq this-command git-islands-log-selecting-commands))
+      (setq git-islands-log-marked nil
+            git-islands-log-anchor nil))
+    (setq git-islands-log-row (pos-bol)))
+  (setq git-islands-log-command-row nil)
   (git-islands-highlight)
   (when-let* ((window (get-buffer-window (current-buffer))))
     (git-islands-log-maybe-more window))
@@ -727,7 +762,8 @@ Rows outside the viewport are fitted on demand when scrolled into view."
       (with-current-buffer buffer
         (when (and (derived-mode-p 'git-islands-log-mode) (equal git-islands-log-root root)
                    (not (equal (git-islands-status-head status) git-islands-log-head)))
-          (when-let* ((commit (get-text-property (pos-bol) 'git-islands-commit)))
+          (when-let* ((commit (get-text-property (or git-islands-log-row (pos-bol))
+                                               'git-islands-commit)))
             (setq git-islands-log-select (git-islands-commit-hash commit)))
           (git-islands-log-reload))))))
 
