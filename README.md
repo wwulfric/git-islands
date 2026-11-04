@@ -14,8 +14,9 @@ IntelliJ-style Git tool windows for Emacs, drawn in Emacs and driven by
   path and text, a branches pane and a details pane. Select several
   commits with Shift and Cmd-click to cherry-pick, revert or compare them.
 - **Branches popup**: checkout, new branch, update, push, merge and rebase.
-- **Diffs and merges**: side-by-side diffs with stage and revert per
-  change, and a three-pane merge for conflicts.
+- **Diffs and merges**: side-by-side and unified diffs, with stage and
+  revert per change from the gutter and F7 stepping on through a list's
+  files, and a three-pane merge for conflicts.
 - **Annotate**: blame in the margin, linked to the log.
 
 Magit loads only when a tool window first opens or a command changes a
@@ -179,6 +180,25 @@ To keep the previous behavior and use only your own line number settings:
 Set this before opening Diff. The standard `line-number` and
 `line-number-current-line` faces control the appearance.
 
+### Diff viewers
+
+As in IntelliJ, the gutter between the two sides holds each change's
+actions: the arrow on the left side reverts it, and the checkbox on the
+right side stages it, or unstages it when the index has it already.
+`C-c C-r` and `C-c C-s` do the same at point. `C-c C-u` switches to the
+unified viewer, which shows old lines above new ones and numbers both
+sides in the margin; the choice is kept in `git-islands-diff-viewer` for
+the next diffs:
+
+```elisp
+(with-eval-after-load 'git-islands-diff
+  (setq git-islands-diff-viewer 'unified))
+```
+
+A diff opened from the Commit panel or a commit's details steps to the
+list's next or previous file with `C-c C-f` and `C-c C-b`, or with F7
+pressed again past the last change.
+
 ### Selection and diff colors
 
 Load your theme before these snippets. `custom-set-faces` records user face
@@ -208,8 +228,9 @@ if you switch themes. These examples require no personal faces or functions:
 File status colors (`git-islands-modified`, `git-islands-added`,
 `git-islands-deleted`, `git-islands-untracked`, `git-islands-conflict`) live in
 `git-islands-faces.el`. Diff colors live separately in `git-islands-diff.el`,
-including `git-islands-diff-modified`, `git-islands-diff-word` and
-`git-islands-diff-filler`.
+including `git-islands-diff-modified`, `git-islands-diff-word`,
+`git-islands-diff-filler` and the paler filler tints
+`git-islands-diff-filler-added` and `git-islands-diff-filler-modified`.
 
 Defaults inherit the editor font and selection faces, with square selections
 and text action buttons. Commit and Log omit refresh and hide icons; use `g`

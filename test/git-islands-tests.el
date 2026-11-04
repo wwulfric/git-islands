@@ -215,9 +215,61 @@
       (dolist (overlay (overlays-in (point-min) (point-max)))
         (should (= (overlay-get overlay 'line-height) 1.2))
         (should (= (overlay-get overlay 'line-spacing) 0.2))
-        (when-let* ((string (overlay-get overlay 'before-string)))
+        (when-let* ((string (overlay-get overlay 'display)))
           (should (= (get-text-property 0 'line-height string) 1.2))
           (should (= (get-text-property 0 'line-spacing string) 0.2)))))))
+
+(ert-deftest git-islands-diff-fill-follows-the-line-before ()
+  ;; Filler rows replace the previous line's newline, so line numbers stay
+  ;; on the lines' own rows.
+  (with-temp-buffer
+    (insert "a\nb\n")
+    (git-islands-diff-fill 2 2 'git-islands-diff-modified)
+    (let* ((overlay (car (overlays-in (point-min) (point-max))))
+           (string (overlay-get overlay 'display)))
+      (should (equal (list (overlay-start overlay) (overlay-end overlay)) '(2 3)))
+      (should (equal (substring-no-properties string) " \n\n\n"))
+      ;; The cursor at the line's end stays on its row.
+      (should (get-text-property 0 'cursor string))
+      (should (eq (get-text-property 1 'face string) 'git-islands-diff-modified))
+      (should (eq (get-text-property 2 'face string) 'git-islands-diff-filler))
+      ;; Text typed at the end of the line before stays visible.
+      (goto-char 2)
+      (insert "x")
+      (should (= (overlay-start overlay) 3))))
+  ;; Before the first line there is no line before.
+  (with-temp-buffer
+    (insert "a\n")
+    (git-islands-diff-fill 1 2)
+    (let ((overlay (car (overlays-in (point-min) (point-max)))))
+      (should (equal (substring-no-properties (overlay-get overlay 'before-string)) "\n\n")))))
+
+(ert-deftest git-islands-diff-blob-buffer-is-never-saved ()
+  ;; A mode hook that saves the buffer, as lsp-bridge does for a file that
+  ;; does not exist, must not write the old version anywhere.
+  (let* ((root (file-name-as-directory (make-temp-file "git-islands-blob-" t)))
+         (default-directory temporary-file-directory)
+         (auto-mode-alist (cons '("\\.blob\\'" . git-islands-test-saving-mode) auto-mode-alist))
+         (hook-ran nil))
+    (unwind-protect
+        (progn
+          (define-derived-mode git-islands-test-saving-mode text-mode "Saving")
+          (add-hook 'git-islands-test-saving-mode-hook
+                    (lambda ()
+                      (setq hook-ran t)
+                      (when buffer-file-name (save-buffer))))
+          (let ((buffer (git-islands-diff-blob-buffer "HEAD" root "gone.blob" "old\n")))
+            (unwind-protect
+                (with-current-buffer buffer
+                  (should (eq major-mode 'git-islands-test-saving-mode))
+                  (should-not buffer-file-name)
+                  (should buffer-read-only)
+                  (should (equal (buffer-string) "old\n")))
+              (kill-buffer buffer)))
+          (should hook-ran)
+          (should-not (file-exists-p (expand-file-name "gone.blob" root)))
+          (should-not (file-exists-p (expand-file-name "gone.blob" temporary-file-directory))))
+      (delete-directory root t))))
 
 ;;;; Parsing
 
@@ -843,8 +895,8 @@
         ;; Two filler lines face the right side's two new lines.
         (should (seq-some (lambda (overlay)
                             (equal (substring-no-properties
-                                    (or (overlay-get overlay 'before-string) ""))
-                                   "\n\n"))
+                                    (or (overlay-get overlay 'display) ""))
+                                   " \n\n\n"))
                           (overlays-in (point-min) (point-max))))
         (should (eq (key-binding (kbd "q")) #'git-islands-diff-quit)))
       (with-current-buffer right
@@ -882,6 +934,126 @@
       (should (equal (git-islands-diff-session-left-label session) "New file"))
       (should (equal (mapcar #'git-islands-hunk-kind (git-islands-diff-session-hunks session)) '(added)))
       (with-current-buffer (git-islands-diff-session-left session) (git-islands-diff-quit)))))
+
+;; Before IntelliJ's viewers: lines new as a whole, the gutter's actions,
+;; the unified viewer and stepping through a list of files.
+(ert-deftest git-islands-diff-colors-lines-and-acts-from-the-gutter ()
+  (git-islands-test-with-repo
+    (git-islands-test-write "code.el" "one\ntwo\nthree\n")
+    (git-islands-test-git "add" ".")
+    (git-islands-test-git "commit" "-q" "-m" "Code")
+    (git-islands-test-write "code.el" "zero\none\nTWO 2\nbrand new line\nthree\n")
+    (delete-other-windows)
+    (let* ((git-islands-diff-viewer 'side-by-side)
+           (session (git-islands-diff-show root "code.el" :left-rev "HEAD"))
+           (left (git-islands-diff-session-left session))
+           (right (git-islands-diff-session-right session))
+           (faces (lambda (buffer line)
+                    (with-current-buffer buffer
+                      (let ((position (git-islands-diff-line-position line)))
+                        (mapcar (lambda (overlay) (overlay-get overlay 'face))
+                                (overlays-at position))))))
+           (gutter (lambda (buffer)
+                     (with-current-buffer buffer
+                       (seq-filter (lambda (overlay)
+                                     (eq (car-safe (car-safe (get-text-property
+                                                              0 'display
+                                                              (or (overlay-get overlay 'before-string) ""))))
+                                         'margin))
+                                   (overlays-in (point-min) (point-max)))))))
+      (should (equal (mapcar #'git-islands-hunk-kind (git-islands-diff-session-hunks session))
+                     '(added modified)))
+      ;; The changed line keeps its marked word; the line new as a whole is green.
+      (should (memq 'git-islands-diff-word (funcall faces right 3)))
+      (should (memq 'git-islands-diff-added (funcall faces right 4)))
+      (should-not (memq 'git-islands-diff-word (funcall faces right 4)))
+      ;; Filler for an added line takes the added tint.
+      (with-current-buffer left
+        (should (seq-some (lambda (overlay)
+                            (when-let* ((string (or (overlay-get overlay 'display)
+                                                    (overlay-get overlay 'before-string))))
+                              (eq (get-text-property (1- (length string)) 'face string)
+                                  'git-islands-diff-filler-added)))
+                          (overlays-in (point-min) (point-max)))))
+      ;; One arrow and one checkbox per hunk, in the gutter between the sides.
+      (should (= (length (funcall gutter left)) 2))
+      (should (= (length (funcall gutter right)) 2))
+      (should (equal (window-margins (car (git-islands-diff-session-windows session))) '(nil . 2)))
+      ;; The checkbox stages the hunk, then unstages it.
+      (with-current-buffer right
+        (let ((hunk (car (git-islands-diff-session-hunks session))))
+          (git-islands-diff-stage-hunk hunk)
+          (should (equal (git-islands-test-git "diff" "--cached" "--numstat") "1\t0\tcode.el"))
+          (should (= (length (git-islands-diff-session-staged session)) 1))
+          (git-islands-diff-stage-hunk (car (git-islands-diff-session-staged session)))
+          (should (equal (git-islands-test-git "diff" "--cached" "--numstat") ""))
+          (should-not (git-islands-diff-session-staged session))))
+      ;; The unified viewer: old lines above new ones, numbered on both sides.
+      (with-current-buffer right
+        (goto-char (git-islands-diff-line-position 3))
+        ;; A mode hook turning on line numbers must not add a third column.
+        (let ((prog-mode-hook '(display-line-numbers-mode)))
+          (git-islands-diff-toggle-viewer)))
+      (should (eq git-islands-diff-viewer 'unified))
+      (let ((unified (git-islands-diff-session-unified session)))
+        (should (eq (window-buffer) unified))
+        (should (= (length (window-list)) 1))
+        (with-current-buffer unified
+          (should (equal (buffer-string) "zero\none\ntwo\nTWO 2\nbrand new line\nthree\n"))
+          (should (equal git-islands-diff--unified-starts '(1 3)))
+          (should-not display-line-numbers)
+          ;; Point stayed on the hunk it was on.
+          (should (= (line-number-at-pos) 3))
+          (should (eq (git-islands-diff-hunk-at-point) (cadr (git-islands-diff-session-hunks session))))
+          (should (memq 'git-islands-diff-deleted (funcall faces unified 3)))
+          (should (memq 'git-islands-diff-added (funcall faces unified 5)))
+          (let ((numbers (mapcar (lambda (line)
+                                   (let* ((overlay (seq-find (lambda (o) (overlay-get o 'before-string))
+                                                             (overlays-in (git-islands-diff-line-position line)
+                                                                          (git-islands-diff-line-position line))))
+                                          (display (get-text-property 0 'display (overlay-get overlay 'before-string))))
+                                     (string-trim (substring-no-properties (cadr display)))))
+                                 '(1 2 3 4 6))))
+            (should (equal numbers '("1" "1 2" "2" "3" "3 5"))))
+          ;; Reverting from the unified viewer edits the right side.
+          (git-islands-diff-revert-hunk)
+          (should (equal (with-current-buffer right (buffer-string)) "zero\none\ntwo\nthree\n"))
+          (should (equal (buffer-string) "zero\none\ntwo\nthree\n"))
+          (git-islands-diff-toggle-viewer)))
+      (should-not (git-islands-diff-session-unified session))
+      (should (= (length (window-list)) 2))
+      (with-current-buffer right
+        (git-islands-diff-quit)
+        (should-not (local-variable-p 'left-margin-width))
+        (should-not (local-variable-p 'tab-line-tabs-function)))
+      (should (= (length (window-list)) 1))
+      (kill-buffer right))))
+
+(ert-deftest git-islands-diff-steps-through-a-list ()
+  (let ((list (generate-new-buffer " *changes*"))
+        shown)
+    (unwind-protect
+        (progn
+          (with-current-buffer list
+            (dolist (path '("a.el" "b.el" "c.el" "d.el"))
+              (insert (propertize path 'git-islands-entry
+                                  (git-islands-entry-create :path path :kind (if (equal path "c.el")
+                                                                                 'untracked
+                                                                               'changed)))
+                      "\n")))
+          (let ((show (lambda ()
+                        (push (git-islands-entry-path (get-text-property (point) 'git-islands-entry))
+                              shown)))
+                (skip (lambda (entry) (eq (git-islands-entry-kind entry) 'untracked))))
+            (should (git-islands-diff-sibling list "b.el" t show skip))
+            (should (equal shown '("d.el")))
+            (should (git-islands-diff-sibling list "b.el" nil show skip))
+            (should (equal shown '("a.el" "d.el")))
+            (should-not (git-islands-diff-sibling list "d.el" t show skip))
+            (should-not (git-islands-diff-sibling list "a.el" nil show skip))
+            (with-current-buffer list
+              (should (equal (buffer-substring (point) (line-end-position)) "a.el")))))
+      (kill-buffer list))))
 
 ;;;; Annotate
 

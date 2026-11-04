@@ -13,7 +13,8 @@
   旁边有分支窗格和详情窗格。用 Shift 和 Cmd-点击选中多个提交，可以
   cherry-pick、revert 或对比。
 - **分支弹窗**：checkout、新建分支、update、push、merge 和 rebase。
-- **Diff 与合并**：左右对照的 diff，每处改动都能单独暂存或撤销；冲突用三栏合并解决。
+- **Diff 与合并**：左右对照和统一视图两种 diff，每处改动都能在中缝的图标上
+  单独暂存或撤销，用 F7 可以接着看列表里的下一个文件；冲突用三栏合并解决。
 - **Annotate**：在边栏显示 blame，并与 log 联动。
 
 只有在第一次打开工具窗口，或执行会改动仓库的命令时，才会加载 Magit。
@@ -162,6 +163,21 @@ Diff 源码缓冲区保留自身的 mode line。
 
 行号外观使用 Emacs 标准的 `line-number` 和 `line-number-current-line` faces。
 
+### Diff 视图
+
+和 IntelliJ 一样，两栏之间的中缝放着每处改动的操作：左侧的箭头撤销这处改动，
+右侧的复选框暂存它，已在 index 中时再点一次取消暂存。光标处也可以用
+`C-c C-r` 和 `C-c C-s`。`C-c C-u` 切换到统一视图：旧行在上、新行在下，
+边栏同时显示两侧的行号。选择会记在 `git-islands-diff-viewer` 里，之后的 diff 沿用：
+
+```elisp
+(with-eval-after-load 'git-islands-diff
+  (setq git-islands-diff-viewer 'unified))
+```
+
+从 Commit 面板或提交详情打开的 diff，可以用 `C-c C-f`、`C-c C-b` 切到列表中的
+下一个或上一个文件；在最后一处改动上再按一次 F7 也会跳到下一个文件。
+
 ### 选中行与 diff 配色
 
 先加载主题，再应用这些片段。`custom-set-faces` 设置用户 face spec，优先于主题中的 face。
@@ -190,7 +206,8 @@ Diff 源码缓冲区保留自身的 mode line。
 文件状态颜色 `git-islands-modified`、`git-islands-added`、`git-islands-deleted`、
 `git-islands-untracked`、`git-islands-conflict` 定义在 `git-islands-faces.el`。
 Diff 配色单独定义在 `git-islands-diff.el`，还包括 `git-islands-diff-modified`、
-`git-islands-diff-word` 和 `git-islands-diff-filler`。
+`git-islands-diff-word`、`git-islands-diff-filler`，以及更浅的补齐空行色
+`git-islands-diff-filler-added` 和 `git-islands-diff-filler-modified`。
 
 默认外观继承编辑器字体和选中行 face，使用直角选中背景与文字操作按钮。
 Commit 和 Log 不再显示刷新、隐藏图标，仍可使用 `g` 和 `q`；Log 的 `C`

@@ -23,7 +23,7 @@
 (require 'git-islands-ui)
 
 (declare-function git-islands-diff-blob "git-islands-diff" (root rev path))
-(declare-function git-islands-diff-blob-buffer "git-islands-diff" (label path text))
+(declare-function git-islands-diff-blob-buffer "git-islands-diff" (label root path text))
 (declare-function git-islands-button "git-islands-tree" (label action help &optional primary))
 (declare-function git-islands-ui "git-islands-tree" (text &optional face))
 (declare-function git-islands-header-style "git-islands-tree" (enable))
@@ -311,8 +311,8 @@ Apply, which finishes the merge, is the default button."
   (require 'git-islands-diff)
   (when-let* ((old (frame-parameter nil 'git-islands-merge)))
     (git-islands-merge-close old))
-  (let* ((ours (git-islands-diff-blob-buffer "Yours" path (git-islands-diff-blob root ":2" path)))
-         (theirs (git-islands-diff-blob-buffer "Theirs" path (git-islands-diff-blob root ":3" path)))
+  (let* ((ours (git-islands-diff-blob-buffer "Yours" root path (git-islands-diff-blob root ":2" path)))
+         (theirs (git-islands-diff-blob-buffer "Theirs" root path (git-islands-diff-blob root ":3" path)))
          (result (find-file-noselect (expand-file-name path root)))
          (merge (git-islands-merge-create :root root :path path
                                           :ours ours :result result :theirs theirs)))

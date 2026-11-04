@@ -1259,7 +1259,12 @@ COMMIT can be a list of commits, newest first, when several are selected."
                                :right-rev (unless (eq (git-islands-entry-change entry) 'deleted) hash)
                                :right-empty (eq (git-islands-entry-change entry) 'deleted)
                                :right-label (if (eq (git-islands-entry-change entry) 'deleted)
-                                                "Deleted" (substring hash 0 8))))
+                                                "Deleted" (substring hash 0 8))
+                               :step (let ((buffer (current-buffer))
+                                           (path (git-islands-entry-path entry)))
+                                       (lambda (forward)
+                                         (git-islands-diff-sibling
+                                          buffer path forward #'git-islands-details-show-file)))))
     (git-islands-details-toggle)))
 
 (defun git-islands-details-visit ()

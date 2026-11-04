@@ -271,6 +271,14 @@ entries, and without it the group is left out."
 
 (add-hook 'window-size-change-functions #'git-islands-message-ensure-height)
 
+(defun git-islands-commit-diff-step (buffer path)
+  "Return a diff's step to the file before or after PATH in Commit BUFFER.
+Untracked files and conflicts, which open no diff, are passed over."
+  (lambda (forward)
+    (git-islands-diff-sibling buffer path forward #'git-islands-commit-show-diff
+                              (lambda (entry)
+                                (memq (git-islands-entry-kind entry) '(untracked unmerged))))))
+
 (defun git-islands-commit-show-diff ()
   "Show the file at point side by side with HEAD, or fold the row at point."
   (interactive)
@@ -283,7 +291,9 @@ entries, and without it the group is left out."
                                                  (not (eq (git-islands-entry-change entry) 'added))
                                                  "HEAD")
                                   :left-path (git-islands-entry-orig entry)
-                                  :left-label "HEAD")))
+                                  :left-label "HEAD"
+                                  :step (git-islands-commit-diff-step
+                                         (current-buffer) (git-islands-entry-path entry)))))
     (git-islands-commit-toggle-section)))
 
 (defun git-islands-commit-rollback ()
