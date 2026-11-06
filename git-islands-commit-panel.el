@@ -64,8 +64,8 @@
               magit-section-highlight-selection nil
               magit-section-visibility-indicators nil
               revert-buffer-function (lambda (&rest _) (git-islands-commit-refresh)))
-  (git-islands-view-setup)
-  (setq-local header-line-format '(:eval (git-islands-tool-header (git-islands-commit-header))))
+  (tool-islands-view-setup)
+  (setq-local header-line-format '(:eval (tool-islands-header-line (git-islands-commit-header))))
   (git-islands-set-mode-line)
   (add-hook 'kill-buffer-hook (lambda () (git-islands-unwatch git-islands-commit-root)) nil t))
 
@@ -106,11 +106,12 @@
 
 (defun git-islands-commit-checkbox (entries)
   "Return a checkbox showing whether ENTRIES are staged, toggling them."
-  (git-islands-checkbox (git-islands-entries-checkbox-state entries)
+  (tool-islands-checkbox (git-islands-entries-checkbox-state entries)
                         (lambda (event)
                           (interactive "e")
                           (mouse-set-point event)
-                          (git-islands-commit-include))))
+                          (git-islands-commit-include))
+                        "Include in commit"))
 
 (defun git-islands-commit-entry-checkbox (entries)
   "Return the checkbox of a row listing ENTRIES, or nil for conflicts."
@@ -147,10 +148,10 @@ entries, and without it the group is left out."
     (setq magit-root-section nil)
     (magit-insert-section (git-islands-root)
                           (if (not status)
-                              (git-islands-tree-row 0 (propertize "Loading…" 'face 'git-islands-dim))
+                              (tool-islands-row 0 (propertize "Loading…" 'face 'tool-islands-dim))
                             (let ((entries (git-islands-status-entries status)))
                               (when-let* ((state (git-islands-status-state status)))
-                                (git-islands-tree-row 0 (git-islands-operation-banner git-islands-commit-root state)))
+                                (tool-islands-row 0 (git-islands-operation-banner git-islands-commit-root state)))
                               (git-islands-commit-insert-group
                                'conflicts "Merge Conflicts"
                                (seq-filter (lambda (entry) (eq (git-islands-entry-kind entry) 'unmerged)) entries)
@@ -161,13 +162,13 @@ entries, and without it the group is left out."
                                'untracked "Unversioned Files"
                                (seq-filter (lambda (entry) (eq (git-islands-entry-kind entry) 'untracked)) entries)
                                t))))
-    (git-islands-tree-draw-chevrons)
+    (tool-islands-draw-chevrons)
     (if-let* ((section (and ident (magit-get-section ident))))
         (goto-char (oref section start))
       (goto-char (point-min))
       (forward-line (1- line)))
-    (git-islands-fit-rows)
-    (git-islands-highlight)))
+    (tool-islands-fit-rows)
+    (tool-islands-highlight)))
 
 (defun git-islands-commit-on-status (root)
   "Draw ROOT's panels again after its snapshot changed."
@@ -195,13 +196,7 @@ entries, and without it the group is left out."
   (or (get-text-property (pos-bol) 'git-islands-entry)
       (user-error "No file on this row")))
 
-(defun git-islands-commit-toggle-section ()
-  "Fold or unfold the group or folder at point."
-  (interactive)
-  (when-let* ((section (magit-current-section)))
-    (when (oref section content)
-      (magit-section-toggle section)
-      (git-islands-tree-draw-chevron section))))
+(defalias 'git-islands-commit-toggle-section #'tool-islands-toggle-section)
 
 (defun git-islands-commit-include ()
   "Check or uncheck the row at point, staging or unstaging its files."
@@ -389,18 +384,9 @@ Untracked files and conflicts, which open no diff, are passed over."
   (dolist (buffer (git-islands-commit-buffers))
     (with-current-buffer buffer (git-islands-commit-render))))
 
-(defun git-islands-commit-expand-all ()
-  "Unfold every group and folder."
-  (interactive)
-  (magit-section-show-children magit-root-section 99)
-  (git-islands-tree-draw-chevrons))
+(defalias 'git-islands-commit-expand-all #'tool-islands-expand-all)
 
-(defun git-islands-commit-collapse-all ()
-  "Fold every folder, leaving the groups open."
-  (interactive)
-  (dolist (group (oref magit-root-section children))
-    (magit-section-hide-children group))
-  (git-islands-tree-draw-chevrons))
+(defalias 'git-islands-commit-collapse-all #'tool-islands-collapse-all)
 
 (defun git-islands-commit-magit ()
   "Open the repository in Magit's status buffer."
@@ -443,27 +429,27 @@ ACTION is a command, or a function called with the click event.")
                                                 (min 7 (length (git-islands-status-head status))))))
              (git-islands-commit-distance "general/up" (git-islands-status-ahead status))
              (git-islands-commit-distance "general/down" (git-islands-status-behind status)))
-     'face 'git-islands-dim)))
+     'face 'tool-islands-dim)))
 
 (defun git-islands-commit-distance (icon count)
   "Return COUNT commits after a small ICON arrow, or nothing for none."
   (when (> count 0)
-    (concat (git-islands-space 4)
-            (expui-icons-icon icon :face 'git-islands-dim :height 12)
+    (concat (tool-islands-space 4)
+            (expui-icons-icon icon :face 'tool-islands-dim :height 12)
             (number-to-string count))))
 
 (defun git-islands-commit-header ()
   "Return the Commit tool window's title, and its toolbar while focused."
   (let* ((toolbar (when (mode-line-window-selected-p)
-                    (git-islands-toolbar git-islands-commit-buttons)))
+                    (tool-islands-toolbar git-islands-commit-buttons)))
          (room (- (window-body-width nil t)
                   (if toolbar (string-pixel-width toolbar) 0)
-                  8 (git-islands-line-end-inset)))
-         (title (concat (propertize " Commit" 'face 'git-islands-title)
+                  8 (tool-islands-line-end-inset)))
+         (title (concat (propertize " Commit" 'face 'tool-islands-title)
                         (git-islands-commit-branch-label (git-islands-status git-islands-commit-root)))))
-    (concat (propertize " " 'face 'header-line 'display (git-islands-header-space 0))
+    (concat (propertize " " 'face 'header-line 'display (tool-islands-header-space 0))
             (truncate-string-pixelwise title room (current-buffer) "…")
-            (when toolbar (git-islands-at-right toolbar (git-islands-line-end))))))
+            (when toolbar (tool-islands-at-right toolbar (tool-islands-line-end))))))
 
 ;;;; Commit message
 
@@ -497,15 +483,15 @@ ACTION is a command, or a function called with the click event.")
   (setq-local tab-line-exclude t
               fill-column 72
               ;; Keep the text off the window's edge, as the rows above are.
-              line-prefix (git-islands-space git-islands-row-inset)
-              wrap-prefix (git-islands-space git-islands-row-inset)
+              line-prefix (tool-islands-space tool-islands-row-inset)
+              wrap-prefix (tool-islands-space tool-islands-row-inset)
               word-wrap t
               truncate-lines nil
-              header-line-format '(:eval (git-islands-tool-header (git-islands-message-header))))
+              header-line-format '(:eval (tool-islands-header-line (git-islands-message-header))))
   (git-islands-set-mode-line)
   ;; The message is written in the interface font, as the rows above.
-  (face-remap-add-relative 'default 'git-islands-file-name)
-  (git-islands-header-style t)
+  (face-remap-add-relative 'default 'tool-islands-text)
+  (tool-islands-header-style t)
   (setq-local line-spacing 0.25)
   (add-hook 'after-change-functions #'git-islands-message-update-placeholder nil t)
   ;; Air between the header's rule and the first line.
@@ -537,31 +523,31 @@ ACTION is a command, or a function called with the click event.")
     (setq git-islands-message-placeholder (make-overlay 1 1 nil t nil)))
   (overlay-put git-islands-message-placeholder 'before-string
                (when (= (buffer-size) 0)
-                 (propertize "Commit Message" 'face 'git-islands-dim 'cursor t))))
+                 (propertize "Commit Message" 'face 'tool-islands-dim 'cursor t))))
 
 (defun git-islands-message-header ()
   "Return the message's header: Amend, then the commit buttons.
 Commit and Push keeps its label while there is room, as in IntelliJ."
-  (let* ((primary (git-islands-button "Commit" #'git-islands-message-commit "Commit (s-RET)" t))
-         (push-label (git-islands-button "Commit and Push…" #'git-islands-message-commit-and-push
+  (let* ((primary (tool-islands-button "Commit" #'git-islands-message-commit "Commit (s-RET)" t))
+         (push-label (tool-islands-button "Commit and Push…" #'git-islands-message-commit-and-push
                                          "Commit and Push (s-M-k)"))
-         (amend (git-islands-header-button #'git-islands-message-toggle-amend
+         (amend (tool-islands-header-button #'git-islands-message-toggle-amend
                                            "Amend the last commit (C-c C-a)"
-                                           (git-islands-checkbox (if git-islands-message-amend 'on 'off))
-                                           (git-islands-space 6) "Amend"))
-         (gap (git-islands-space 6))
-         (room (- (window-body-width nil t) git-islands-row-inset
-                  (string-pixel-width amend) (git-islands-line-end-inset) 24))
+                                           (tool-islands-checkbox (if git-islands-message-amend 'on 'off))
+                                           (tool-islands-space 6) "Amend"))
+         (gap (tool-islands-space 6))
+         (room (- (window-body-width nil t) tool-islands-row-inset
+                  (string-pixel-width amend) (tool-islands-line-end-inset) 24))
          (push (if (> room (+ (string-pixel-width primary) (string-pixel-width push-label) 6))
                    push-label
-                 (git-islands-header-button #'git-islands-message-commit-and-push "Commit and Push (s-M-k)"
+                 (tool-islands-header-button #'git-islands-message-commit-and-push "Commit and Push (s-M-k)"
                                             (expui-icons-icon "vcs/push"
-                                                              :face 'git-islands-neutral-icon))))
-         (buttons (concat primary gap push (git-islands-space git-islands-toolbar-margin))))
-    (concat (propertize " " 'face 'header-line 'display (git-islands-header-space 0))
-            (git-islands-space (- git-islands-row-inset 2))
+                                                              :face 'tool-islands-neutral-icon))))
+         (buttons (concat primary gap push (tool-islands-space tool-islands-toolbar-margin))))
+    (concat (propertize " " 'face 'header-line 'display (tool-islands-header-space 0))
+            (tool-islands-space (- tool-islands-row-inset 2))
             amend
-            (git-islands-at-right buttons (git-islands-line-end)))))
+            (tool-islands-at-right buttons (tool-islands-line-end)))))
 
 (defun git-islands-message-text ()
   "Return the message without surrounding blank lines."
@@ -680,7 +666,7 @@ it off brings back what was typed before."
       (when-let* ((message-window (get-buffer-window message)))
         (window-preserve-size message-window nil t))
       ;; As wide as asked, whatever the frame's width does later.
-      (git-islands-pane-keep window (lambda () (* (git-islands-side-width) (frame-char-width))))
+      (tool-islands-pane-keep window (lambda () (* (git-islands-side-width) (frame-char-width))))
       (git-islands-refresh root)
       (git-islands-message-ensure-height)
       window)))

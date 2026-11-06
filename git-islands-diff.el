@@ -246,7 +246,7 @@ A diff is one editor tab, as in IntelliJ, not the editor's whole strip."
         (add-hook 'window-scroll-functions #'git-islands-diff-scrolled nil t)
         (add-hook 'after-change-functions #'git-islands-diff-changed nil t)
         (add-hook 'kill-buffer-hook #'git-islands-diff-killed nil t)
-        (git-islands-header-style t)
+        (tool-islands-header-style t)
         (when buffer-read-only
           (setq-local minor-mode-overriding-map-alist
                       (list (cons 'git-islands-diff-mode git-islands-diff-read-only-map)))))
@@ -265,7 +265,7 @@ A diff is one editor tab, as in IntelliJ, not the editor's whole strip."
     (remove-hook 'window-scroll-functions #'git-islands-diff-scrolled t)
     (remove-hook 'after-change-functions #'git-islands-diff-changed t)
     (remove-hook 'kill-buffer-hook #'git-islands-diff-killed t)
-    (git-islands-header-style nil)
+    (tool-islands-header-style nil)
     (kill-local-variable 'minor-mode-overriding-map-alist)))
 
 (defun git-islands-diff-killed ()
@@ -410,7 +410,7 @@ string would not be drawn."
                   (funcall action)))
     (propertize " " 'display `((margin ,margin)
                                ,(or (expui-icons-image icon :ascent 'center) "•"))
-                'face 'git-islands-neutral-icon
+                'face 'tool-islands-neutral-icon
                 'local-map map 'help-echo help 'pointer 'hand)))
 
 (defun git-islands-diff-gutter (line margin icon help action)
@@ -1046,9 +1046,9 @@ difference, else how many differences there are."
 (defun git-islands-diff-buttons (buttons)
   "Return header BUTTONS, each (ICON COMMAND HELP), with gaps between them."
   (mapconcat (pcase-lambda (`(,icon ,action ,help))
-               (git-islands-header-button action help
-                                          (expui-icons-icon icon :face 'git-islands-neutral-icon)))
-             buttons (git-islands-space 6)))
+               (tool-islands-header-button action help
+                                          (expui-icons-icon icon :face 'tool-islands-neutral-icon)))
+             buttons (tool-islands-space 6)))
 
 (defun git-islands-diff-header (side)
   "Return a width-aware header for SIDE of the diff.
@@ -1058,20 +1058,20 @@ between differences, the right side switches the viewer, the file and
 closes; the unified viewer's header has all of these."
   (let* ((session git-islands-diff-current)
          (width (max 0 (- (window-body-width nil t) 24
-                          (git-islands-line-end-inset))))
+                          (tool-islands-line-end-inset))))
          (unified (eq side 'unified))
          (left (and side (not unified)))
          (label (cond (unified (concat (git-islands-diff-session-left-label session) " → "
                                        (git-islands-diff-session-right-label session)))
                       (left (git-islands-diff-session-left-label session))
                       (t (git-islands-diff-session-right-label session))))
-         (title (concat (propertize label 'face 'git-islands-title)
-                        (git-islands-ui (concat "  " (git-islands-diff-session-path session))
-                                        'git-islands-dim)
+         (title (concat (propertize label 'face 'tool-islands-title)
+                        (tool-islands-ui-text (concat "  " (git-islands-diff-session-path session))
+                                        'tool-islands-dim)
                         ;; Read-only sides carry IntelliJ's lock.
                         (when (and (not unified) buffer-read-only (>= width 160))
-                          (concat (git-islands-space 6)
-                                  (expui-icons-icon "general/locked" :face 'git-islands-neutral-icon)))))
+                          (concat (tool-islands-space 6)
+                                  (expui-icons-icon "general/locked" :face 'tool-islands-neutral-icon)))))
          (moves (when (or left unified)
                   (concat
                    (when (>= width 100)
@@ -1079,8 +1079,8 @@ closes; the unified viewer's header has all of these."
                       '(("general/up" git-islands-diff-previous "Previous Difference (S-F7)")
                         ("general/down" git-islands-diff-next "Next Difference (F7)"))))
                    (when (>= width 260)
-                     (concat (git-islands-space 10)
-                             (git-islands-ui (git-islands-diff-position session) 'git-islands-dim))))))
+                     (concat (tool-islands-space 10)
+                             (tool-islands-ui-text (git-islands-diff-position session) 'tool-islands-dim))))))
          (others (when (or unified (not left))
                    (git-islands-diff-buttons
                     (append
@@ -1096,11 +1096,11 @@ closes; the unified viewer's header has all of these."
                          ("general/right" git-islands-diff-next-file
                           "Compare Next File (C-c C-f)")))
                      '(("general/close" git-islands-diff-quit "Close (C-c C-k)"))))))
-         (actions (concat moves (and moves others (git-islands-space 16)) others))
+         (actions (concat moves (and moves others (tool-islands-space 16)) others))
          (room (max 0 (- width (string-pixel-width actions) 12))))
-    (concat (propertize " " 'display (git-islands-header-space '(12)))
+    (concat (propertize " " 'display (tool-islands-header-space '(12)))
             (git-islands-diff-header-fit title room)
-            (git-islands-at-right actions (git-islands-line-end)))))
+            (tool-islands-at-right actions (tool-islands-line-end)))))
 
 ;;;; Entry point
 

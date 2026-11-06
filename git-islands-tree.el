@@ -8,7 +8,7 @@
 ;; each with a disclosure chevron, an optional New UI checkbox, an icon and
 ;; a name colored by how the file changed.  Rows are Magit sections, so
 ;; they fold and keep their visibility across refreshes; a line prefix
-;; gives them their height and indentation (see git-islands-ui.el).
+;; gives them their height and indentation (see tool-islands.el).
 
 ;;; Code:
 
@@ -25,545 +25,22 @@
 
 ;;;; Faces
 
-(defface git-islands-group '((t (:inherit git-islands-title)))
+(defface git-islands-group '((t (:inherit tool-islands-title)))
   "Group rows such as Changes."
   :group 'git-islands)
 
-;;;; Checkboxes
-
-(defconst git-islands-checkbox-size 14 "Pixel size of a checkbox.")
-
-(defun git-islands-face-color (face attribute fallback)
-  "Return FACE's ATTRIBUTE color as #RRGGBB, or FALLBACK if it has none.
-SVG images take the color too, and know no Emacs names such as grey50."
-  (let ((color (face-attribute face attribute nil t)))
-    (if (or (null color) (eq color 'unspecified)
-            (string-prefix-p "unspecified" color)
-            (null (color-values color)))
-        fallback
-      (git-islands-svg-color color))))
-
-(defun git-islands-checkbox-image (state)
-  "Return an upstream gutter checkbox in STATE: `on', `off' or `partial'."
-  (expui-icons-image
-   (pcase state
-     ('on "diff/gutterCheckBoxSelected@14x14")
-     ('partial "diff/gutterCheckBoxIndeterminate@14x14")
-     (_ "diff/gutterCheckBox@14x14"))
-   :height git-islands-checkbox-size))
-
-(defun git-islands-checkbox (state &optional action)
-  "Return a checkbox in STATE that runs ACTION when clicked."
-  (let ((map (make-sparse-keymap)))
-    (when action
-      (define-key map [mouse-1] action)
-      (define-key map [down-mouse-1] #'ignore))
-    (propertize " " 'display (if (expui-icons-svg-p)
-                                 (git-islands-checkbox-image state)
-                               (pcase state ('on "[x]") ('partial "[-]") (_ "[ ]")))
-                'keymap map 'pointer 'hand 'help-echo "Include in commit")))
-
-;;;; Rows
-
-(defun git-islands-chevron (section)
-  "Return SECTION's disclosure chevron, or blank room for a leaf."
-  (let ((state (cond ((or (not (oref section content))
-                          ;; A group listing nothing has nothing to unfold.
-                          (and (null (oref section children))
-                               (>= (oref section content) (oref section end))))
-                      nil)
-                     ((oref section hidden) 'collapsed)
-                     (t 'expanded))))
-    (if (display-images-p)
-        (propertize " " 'face 'git-islands-neutral-icon
-                    'display (pcase state
-                               ('expanded (expui-icons-image "general/chevronDown"))
-                               ('collapsed (expui-icons-image "general/chevronRight"))
-                               (_ `(space :width (,git-islands-state-width)))))
-      (pcase state ('expanded "▾") ('collapsed "▸") (_ " ")))))
-
-(defun git-islands-chevron-put (overlay string)
-  "Make STRING the chevron OVERLAY draws, in the selection's color if selected."
-  (overlay-put overlay 'git-islands-plain string)
-  (overlay-put overlay 'before-string
-               (if-let* ((face (overlay-get overlay 'git-islands-selected)))
-                   (git-islands-under-face (copy-sequence string) face)
-                 string)))
-
-(defun git-islands-tree-draw-chevron (section)
-  "Draw SECTION's chevron again, after it was folded or unfolded."
-  (when-let* ((overlay (seq-find (lambda (overlay) (overlay-get overlay 'git-islands-chevron))
-                                 (overlays-at (oref section start)))))
-    (git-islands-chevron-put overlay (git-islands-chevron section))))
-
-(defun git-islands-tree-draw-chevrons (&optional section)
-  "Draw the chevrons of SECTION, the root by default, and its descendants."
-  (let ((section (or section magit-root-section)))
-    (when section
-      (unless (eq section magit-root-section)
-        (git-islands-tree-draw-chevron section))
-      (mapc #'git-islands-tree-draw-chevrons (oref section children)))))
-
-(defun git-islands-tree-row (depth &rest strings)
-  "Insert a row DEPTH levels deep made of STRINGS.
-The chevron is drawn at its start; see `git-islands-tree-draw-chevron'."
-  (let ((start (point)))
-    (insert (apply #'concat strings) "\n")
-    (add-text-properties start (point) `(line-prefix ,(git-islands-row-prefix depth)
-                                                     git-islands-depth ,depth))
-    (let ((overlay (make-overlay start (1+ start))))
-      (overlay-put overlay 'git-islands-chevron t)
-      (overlay-put overlay 'evaporate t))))
-
-(defun git-islands-tree-gap ()
-  "Return the gap between an icon and its name."
-  (git-islands-space git-islands-icon-gap))
-
-;;;; Tool window headers
-
-(defun git-islands-tool-header (format)
-  "Return header FORMAT as `git-islands-header-function' shows it."
-  (let ((header (copy-sequence format))
-        (border (face-attribute 'git-islands-header :box nil t)))
-    ;; Keep one continuous border across text, buttons and stretch spaces.
-    (unless (eq border 'unspecified)
-      (add-face-text-property 0 (length header) `(:box ,border) nil header))
-    (funcall git-islands-header-function header)))
-
-(defun git-islands-toolbar (buttons)
-  "Return a toolbar of BUTTONS, as in `git-islands-commit-buttons'."
-  (let ((pad (git-islands-space git-islands-toolbar-padding)))
-    (concat (mapconcat (pcase-lambda (`(,icon ,action ,help))
-                         (git-islands-header-button
-                          action help pad
-                          (expui-icons-icon icon :face 'git-islands-neutral-icon) pad))
-                       buttons "")
-            (git-islands-space git-islands-toolbar-margin))))
-
-;;;; Lists
-
-;; Every Git tool window's list shares one look: rows of the
-;; same height in the interface font, the selected row a rounded pill in
-;; the selection color (fainter while another window is selected), and
-;; names too wide for the window shortened at their end.
-
-(defvar-local git-islands-view nil "Non-nil in a Git tool window's list.")
-(defvar-local git-islands-hl nil "Overlays drawing the selected rows.")
-(defvar-local git-islands-hl-chevron nil "Chevron overlays drawn as selected.")
-(defvar-local git-islands-selected-rows-function nil
-  "Function returning the starts of the selected rows, as a list.
-Nil selects the row at point alone; the Git log selects several.")
-
-(defvar git-islands-view-mouse-map
-  (let ((map (make-sparse-keymap)))
-    ;; A press selects its row; no drag selects a region of text.
-    (define-key map [down-mouse-1] #'git-islands-mouse-select)
-    (define-key map [drag-mouse-1] #'ignore)
-    (define-key map [mouse-1] #'ignore)
-    map)
-  "Mouse keys every Git list shares, under its own.")
-
-(defun git-islands-mouse-select (event)
-  "Move point to the row clicked at EVENT, selecting it."
-  (interactive "e")
-  (mouse-set-point event)
-  (deactivate-mark))
-
-(defun git-islands-card-color ()
-  "Return the background the tool windows are drawn on."
-  (or (and git-islands-background-function (funcall git-islands-background-function))
-      (git-islands-face-color 'default :background "#FFFFFF")))
-
-(defun git-islands-view-setup (&optional wrap)
-  "Set up the current buffer as a Git tool window's list.
-WRAP non-nil wraps long lines at word boundaries instead of fitting them."
-  (setq-local git-islands-view t
-              cursor-type nil
-              tab-line-exclude t
-              truncate-lines (not wrap)
-              ;; Narrow side windows would otherwise truncate regardless.
-              truncate-partial-width-windows (not wrap)
-              word-wrap wrap
-              ;; The selected row reaches the edge; that is no truncation.
-              fringe-indicator-alist (cons '(truncation nil nil) fringe-indicator-alist)
-              wrap-prefix (and wrap (git-islands-space git-islands-row-inset))
-              ;; A cut line ends in a plain ellipsis, never a boxed glyph.
-              buffer-display-table
-              (let ((table (make-display-table)))
-                (set-display-table-slot table 'truncation (make-glyph-code ?… 'git-islands-dim))
-                table))
-  ;; A selected row's end lies past the window's edge: never scroll to it.
-  (setq-local auto-hscroll-mode nil)
-  (use-local-map (make-composed-keymap (current-local-map) git-islands-view-mouse-map))
-  (face-remap-add-relative 'default 'git-islands-file-name)
-  (git-islands-header-style t)
-  (add-hook 'post-command-hook #'git-islands-highlight nil t)
-  (add-hook 'window-selection-change-functions #'git-islands-highlight nil t)
-  (add-hook 'window-size-change-functions #'git-islands-fit-rows nil t)
-  (add-hook 'window-buffer-change-functions #'git-islands-fit-rows nil t))
-
-(defun git-islands-highlight (&rest _)
-  "Draw the selected rows as pills, as JetBrains' New UI does.
-Pills fade while another window is selected; a blank row has none.
-Window change hooks may run it in another buffer the window now shows."
-  (when git-islands-view (git-islands-highlight-1)))
-
-(defun git-islands-highlight-1 ()
-  "Draw the selected rows; see `git-islands-highlight'."
-  (let* ((window (get-buffer-window (current-buffer)))
-         (face (if (and window (eq window (selected-window)))
-                   'git-islands-hl-line 'git-islands-hl-line-inactive))
-         (rows (if git-islands-selected-rows-function
-                   (funcall git-islands-selected-rows-function)
-                 (list (pos-bol)))))
-    (dolist (chevron git-islands-hl-chevron)
-      (when (overlay-buffer chevron)
-        (overlay-put chevron 'git-islands-selected nil)
-        (git-islands-chevron-put chevron (overlay-get chevron 'git-islands-plain))))
-    (setq git-islands-hl-chevron nil)
-    (mapc #'delete-overlay git-islands-hl)
-    (setq git-islands-hl nil)
-    (dolist (start rows)
-      (let ((end (save-excursion (goto-char start) (pos-eol))))
-        (unless (= start end)
-          (let ((overlay (make-overlay start end nil t)))
-            (overlay-put overlay 'priority 100)
-            (overlay-put overlay 'face face)
-            (overlay-put overlay 'line-prefix
-                         (git-islands-row-prefix (or (get-text-property start 'git-islands-depth) 0)
-                                                 face))
-            (overlay-put overlay 'after-string
-                         (git-islands-pill-end (face-background face nil t)
-                                               (git-islands-row-end-inset window)))
-            (push overlay git-islands-hl))
-          ;; Overlay strings take no background from the pill: draw it in.
-          (when-let* ((chevron (seq-find (lambda (overlay) (overlay-get overlay 'git-islands-chevron))
-                                         (overlays-at start))))
-            (overlay-put chevron 'git-islands-selected face)
-            (git-islands-chevron-put chevron (or (overlay-get chevron 'git-islands-plain)
-                                                 (overlay-get chevron 'before-string)))
-            (push chevron git-islands-hl-chevron)))))))
-
-(defun git-islands-row-end-inset (window)
-  "Return the pixels a selected row stops short of WINDOW's edge.
-Without a right fringe a row filling the window would count as cut, with
-an ellipsis at its end, so it leaves a column free there."
-  (if (and (window-live-p window) (> (or (cadr (window-fringes window)) 0) 0))
-      0
-    (frame-char-width (window-frame window))))
-
-(defun git-islands-pill-end (color inset)
-  "Return the selected row's right end in COLOR, INSET pixels from the edge.
-The clear margin around the rounded end is drawn in the card's color: an
-overlay string would show the canvas there."
-  (let ((radius git-islands-hl-radius)
-        (margin git-islands-hl-margin))
-    (concat (propertize " " 'face `(:background ,color)
-                        'display `(space :align-to (- right (,(+ radius margin inset)))))
-            (git-islands-ui-pill-end 'right radius (git-islands-row-pixels) color margin
-                                     (git-islands-card-color)))))
-
-(defun git-islands-row-width (start end)
-  "Return the pixel width of the row from START to END, unwrapped.
-It counts the row's indentation and disclosure chevron, which are not text."
-  (+ git-islands-row-inset
-     (* git-islands-indent (or (get-text-property start 'git-islands-depth) 0))
-     (if (seq-some (lambda (overlay) (overlay-get overlay 'git-islands-chevron))
-                   (overlays-at start))
-         git-islands-state-width 0)
-     (string-pixel-width (buffer-substring start end) (current-buffer))))
-
-(defun git-islands-fit-margin ()
-  "Return the pixels reserved for the selection's right end."
-  (+ git-islands-hl-margin git-islands-hl-radius 4))
-
-(defun git-islands-fit-rows (&optional window)
-  "Shorten the names that WINDOW is too narrow for, at their end.
-Names are the spans marked `git-islands-fit'; WINDOW defaults to one showing
-the current buffer."
-  (let ((window (if (windowp window) window (get-buffer-window (current-buffer)))))
-    (when (and (window-live-p window) (display-graphic-p (window-frame window)))
-      (with-current-buffer (window-buffer window)
-        (when git-islands-view
-          (let ((room (- (window-body-width window t) (git-islands-fit-margin)
-                         (git-islands-row-end-inset window)))
-                (inhibit-read-only t))
-            ;; The selected row's rounded end reaches the window's edge: measure
-            ;; rows without it.
-            (mapc #'delete-overlay git-islands-hl)
-            (setq git-islands-hl nil)
-            (with-silent-modifications
-              (save-excursion
-                (goto-char (point-min))
-                (while (not (eobp))
-                  (let* ((line-end (pos-eol))
-                         (span (text-property-any (point) line-end 'git-islands-fit t)))
-                    (when span
-                      (let ((span-end (or (text-property-not-all span line-end 'git-islands-fit t)
-                                          line-end)))
-                        (remove-text-properties span span-end '(display nil))
-                        (let ((over (- (git-islands-row-width (point) line-end) room)))
-                          (when (> over 0)
-                            (let* ((text (buffer-substring span span-end))
-                                   (width (- (string-pixel-width text (current-buffer)) over
-                                             (string-pixel-width "…" (current-buffer)))))
-                              (put-text-property
-                               span span-end 'display
-                               (concat (truncate-string-pixelwise text (max 0 width)
-                                                                  (current-buffer))
-                                       (propertize "…" 'face 'git-islands-dim)))))))))
-                  (forward-line 1))))
-            (git-islands-highlight)))))))
-
-(defvar-local git-islands-refit-function #'git-islands-fit-rows
-  "Function fitting this buffer's rows to its window, given the window.
-A side pane resized by `git-islands-pane-fit' calls it.")
-
-;;;; Side panes
-
-;; A tool window's panes keep their width as a share of the frame's, within
-;; limits: splitting side windows loses the widths asked for, and a frame
-;; maximized after a pane opens would otherwise give it a share of its own.
-
-(defvar git-islands-pane--fitting nil "Non-nil while side panes are resized.")
-
-(defun git-islands-pane-keep (window width)
-  "Keep side pane WINDOW as wide as WIDTH, a function returning pixels."
-  (when (window-live-p window)
-    (set-window-parameter window 'git-islands-pane-width width)
-    (set-window-parameter window 'git-islands-pane-buffer (window-buffer window))
-    (git-islands-pane-fit (window-frame window))))
-
-(defun git-islands-pane--width (window)
-  "Return the function giving side pane WINDOW's width, or nil.
-A side window kept for showing another buffer is no pane any more."
-  (and (memq (window-parameter window 'git-islands-pane-buffer)
-             (list nil (window-buffer window)))
-       (window-parameter window 'git-islands-pane-width)))
-
-(defun git-islands-pane-fit (frame)
-  "Give FRAME's side panes their widths, and fit their rows to them.
-A resize made here, inside a size change, runs no size hooks again, so
-each pane's rows are fitted here too."
-  (let ((git-islands-pane--fitting t)
-        ;; PIXELWISE in `window-resize' specifies the delta's units, but
-        ;; without this binding Emacs still rounds it to character cells.
-        ;; An unreachable target then retries on every size hook, even for
-        ;; echo-area changes, resetting the editor's pixel scroll offset.
-        (window-resize-pixelwise t)
-        (windows (window-list frame 'no-minibuffer))
-        (neighbors nil)
-        panes)
-    ;; Resizing a side pane can also take width from the central log.
-    ;; Record its body width before moving either divider.
-    (dolist (window windows)
-      (when (and (buffer-local-value 'git-islands-view (window-buffer window))
-                 (not (git-islands-pane--width window)))
-        (push (cons window (window-body-width window t)) neighbors)))
-    (dolist (window windows)
-      (when-let* ((width (git-islands-pane--width window)))
-        (push window panes)
-        (let ((delta (- (funcall width) (window-pixel-width window))))
-          ;; Even a zero-delta resize applies a new window configuration.
-          (unless (zerop delta)
-            (ignore-errors (window-resize window delta t t t))))))
-    (dolist (entry neighbors)
-      (unless (= (cdr entry) (window-body-width (car entry) t))
-        (push (car entry) panes)))
-    (dolist (window panes)
-      (with-current-buffer (window-buffer window)
-        (funcall git-islands-refit-function window)))
-    (set-frame-parameter frame 'git-islands-pane-frame-width (frame-pixel-width frame))))
-
-(defun git-islands-pane--dragged-p ()
-  "Return non-nil when a mouse drag is resizing windows, or has just ended.
-`mouse-drag-line' only starts the drag: each motion runs from a transient
-map, so `this-command' does not name it, and it marks the drag in
-`track-mouse' instead.  Releasing the button clears that, possibly before
-the redisplay that runs the size hooks for the last motion."
-  (or (eq track-mouse 'dragging)
-      (and (consp last-input-event)
-           (memq 'drag (event-modifiers last-input-event)))))
-
-(defun git-islands-pane-follow (frame)
-  "Size FRAME's side panes again after its windows changed size.
-A pane its divider was dragged for keeps its new share of the frame;
-after any other change, such as the frame's width or another window
-showing, each pane takes its own width again."
-  (unless git-islands-pane--fitting
-    (let ((panes (seq-filter #'git-islands-pane--width
-                             (window-list frame 'no-minibuffer))))
-      (if (git-islands-pane--dragged-p)
-          (dolist (window panes)
-            (let ((share (/ (float (window-pixel-width window)) (frame-pixel-width frame))))
-              (set-window-parameter window 'git-islands-pane-width
-                                    (lambda () (round (* share (frame-pixel-width frame)))))))
-        (when (seq-some (lambda (window)
-                          (/= (window-pixel-width window)
-                              (funcall (git-islands-pane--width window))))
-                        panes)
-          (git-islands-pane-fit frame))))))
-
-(add-hook 'window-size-change-functions #'git-islands-pane-follow)
-
-(defun git-islands-wrap (text width)
-  "Return TEXT's lines broken at spaces to fit WIDTH pixels, in this buffer's font."
-  (mapcan
-   (lambda (line)
-     (let ((words (split-string line " "))
-           (rows nil)
-           (row nil))
-       (dolist (word words)
-         (let ((candidate (if row (concat row " " word) word)))
-           (if (and row (> (string-pixel-width candidate (current-buffer)) width))
-               (progn (push row rows) (setq row word))
-             (setq row candidate))))
-       (nreverse (cons (or row "") rows))))
-   (split-string text "\n")))
-
-(defvar-local git-islands-header-cookie nil
-  "Remapping giving an editor buffer the tool windows' header, while shown so.")
-
-(defun git-islands-header-style (enable)
-  "Give the current buffer's header the tool windows' look if ENABLE, else undo it.
-For editor buffers a diff or merge borrows, until it closes."
-  (if enable
-      (unless git-islands-header-cookie
-        (setq git-islands-header-cookie
-              (let ((background (and git-islands-background-function
-                                     (funcall git-islands-background-function))))
-                (if background
-                    (face-remap-add-relative 'header-line
-                                             :inherit 'git-islands-header :background background)
-                  (face-remap-add-relative 'header-line 'git-islands-header)))))
-    (when git-islands-header-cookie
-      (face-remap-remove-relative git-islands-header-cookie)
-      (setq git-islands-header-cookie nil))))
-
-(defun git-islands-ui (text &optional face)
-  "Return TEXT in the interface font, with FACE's colors.
-Headers of editor windows otherwise take the buffer's own font."
-  (propertize text 'face (if face (list face 'git-islands-file-name) 'git-islands-file-name)))
-
-(defun git-islands-fit (string)
-  "Mark STRING as a name `git-islands-fit-rows' may shorten."
-  (propertize string 'git-islands-fit t))
-
-;;;; Buttons
-
-(defcustom git-islands-button-render-function #'git-islands-button-text
-  "Function rendering a button's LABEL and PRIMARY flag as a string.
-Interaction and hover properties are added by Git Islands.  Use
-`git-islands-button-rounded' for SVG buttons, or provide your own function."
-  :type 'function
-  :group 'git-islands)
-
-(defcustom git-islands-button-radius nil
-  "Rounded button radius in pixels, or nil for half the button height."
-  :type '(choice (const :tag "Pill" nil) natnum)
-  :group 'git-islands)
-
-(defcustom git-islands-button-padding 12
-  "Horizontal padding in pixels on each side of a rounded button."
-  :type 'natnum
-  :group 'git-islands)
-
-(defun git-islands-button-text (label primary)
-  "Return a plain text button for LABEL and PRIMARY."
-  (propertize (concat " " label " ")
-              'face (if primary 'git-islands-primary-button 'git-islands-button)))
-
-(defun git-islands-button-rounded (label primary)
-  "Return a rounded button for LABEL and PRIMARY, with a text fallback."
-  (if (expui-icons-svg-p)
-      (propertize label 'display (git-islands-button-image label primary))
-    (git-islands-button-text label primary)))
-
-(defun git-islands-button-height ()
-  "Return the pixel height of a header button, with air above and below."
-  (round (* 1.4 (frame-char-height))))
-
-(defvar git-islands-button-cache (make-hash-table :test #'equal))
-
-(defun git-islands-button-image (label primary)
-  "Return a pill image showing LABEL, in the accent color if PRIMARY.
-It is one image: a text's background would fill the header's height."
-  (let* ((face (if primary 'git-islands-primary-button 'git-islands-button))
-         (background (git-islands-face-color face :background (if primary "#245FA5" "#ECEDEF")))
-         (foreground (git-islands-face-color face :foreground (if primary "#FFFFFF" "#333333")))
-         (font (face-font 'git-islands-file-name))
-         (size (if font (aref (font-info font) 2) 13))
-         (family (let ((family (face-attribute 'git-islands-ui-font :family nil t)))
-                   (if (stringp family) family "sans-serif")))
-         (height (git-islands-button-height))
-         (radius (min (/ height 2.0) (or git-islands-button-radius (/ height 2.0))))
-         (key (list label background foreground family size height radius git-islands-button-padding)))
-    (or (gethash key git-islands-button-cache)
-        (puthash key
-                 (let* ((width (+ (string-pixel-width
-                                   (propertize label 'face 'git-islands-file-name))
-                                  (* 2 git-islands-button-padding)))
-                        (svg (svg-create width height)))
-                   (svg-rectangle svg 0 0 width height :rx radius :fill background)
-                   (svg-text svg label :x (/ width 2.0) :y (/ height 2.0)
-                             :text-anchor "middle" :dominant-baseline "central"
-                             :font-family family :font-size size :fill foreground)
-                   (svg-image svg :ascent 'center))
-                 git-islands-button-cache))))
-
-(defun git-islands-button (label action help &optional primary)
-  "Return a button LABEL running ACTION, with tooltip HELP.
-PRIMARY identifies the default action to the configured renderer."
-  (git-islands-header-button action help
-                            (funcall git-islands-button-render-function label primary)))
-
-(add-hook 'enable-theme-functions (lambda (&rest _) (clrhash git-islands-button-cache)))
-
 ;;;; Trees
 
-;; A node is (NAME DIRS FILES): DIRS an alist of name to node, FILES the
-;; entries directly inside.  A folder holding only one folder is drawn as
-;; one row, "a/b", as IntelliJ does.
-
 (defun git-islands-tree-build (entries)
-  "Return the folder tree of ENTRIES."
-  (let ((root (list "" nil nil)))
-    (dolist (entry entries)
-      (let ((node root)
-            (parts (split-string (git-islands-entry-path entry) "/")))
-        (dolist (part (butlast parts))
-          (let ((child (assoc part (nth 1 node))))
-            (unless child
-              (setq child (list part nil nil))
-              (setf (nth 1 node) (append (nth 1 node) (list child))))
-            (setq node child)))
-        (setf (nth 2 node) (append (nth 2 node) (list entry)))))
-    (git-islands-tree-compact root)))
+  "Return the folder tree of ENTRIES, as `tool-islands-tree-build' does."
+  (tool-islands-tree-build entries #'git-islands-entry-path))
 
-(defun git-islands-tree-compact (node)
-  "Merge NODE's folders that hold a single folder and nothing else."
-  (setf (nth 1 node)
-        (mapcar (lambda (child)
-                  (while (and (null (nth 2 child)) (= (length (nth 1 child)) 1))
-                    (let ((only (car (nth 1 child))))
-                      (setq child (list (concat (car child) "/" (car only))
-                                        (nth 1 only) (nth 2 only)))))
-                  (git-islands-tree-compact child))
-                (sort (nth 1 node) (lambda (a b) (string< (car a) (car b))))))
-  (setf (nth 2 node)
-        (sort (nth 2 node)
-              (lambda (a b) (string< (file-name-nondirectory (git-islands-entry-path a))
-                                     (file-name-nondirectory (git-islands-entry-path b))))))
-  node)
-
-(defun git-islands-tree-entries (node)
-  "Return every entry in NODE and below."
-  (append (nth 2 node) (mapcan #'git-islands-tree-entries (nth 1 node))))
+(defalias 'git-islands-tree-entries #'tool-islands-tree-items)
 
 (defun git-islands-file-icon (entry)
   "Return the icon of ENTRY's file."
   (let ((path (git-islands-entry-path entry)))
-    (git-islands-icon (expui-icons-name-for-file (file-name-nondirectory path)))))
+    (tool-islands-icon (expui-icons-name-for-file (file-name-nondirectory path)))))
 
 (defun git-islands-file-label (entry &optional directory)
   "Return ENTRY's name in its change face, and DIRECTORY dimmed after it."
@@ -571,13 +48,13 @@ PRIMARY identifies the default action to the configured renderer."
          (change (git-islands-entry-change entry))
          (name (propertize (file-name-nondirectory path)
                            'face (git-islands-change-face change))))
-    (git-islands-fit
+    (tool-islands-fit
      (concat name
              (when-let* ((orig (git-islands-entry-orig entry)))
-               (propertize (concat "  ← " (file-name-nondirectory orig)) 'face 'git-islands-dim))
+               (propertize (concat "  ← " (file-name-nondirectory orig)) 'face 'tool-islands-dim))
              (when (and directory (file-name-directory path))
                (propertize (concat "  " (directory-file-name (file-name-directory path)))
-                           'face 'git-islands-dim))))))
+                           'face 'tool-islands-dim))))))
 
 ;;;; Inserting trees
 
@@ -587,16 +64,16 @@ PRIMARY identifies the default action to the configured renderer."
 (defun git-islands-tree-checkbox (checkbox entries)
   "Return CHECKBOX's checkbox for ENTRIES followed by a gap, or nothing."
   (when-let* ((box (and checkbox (funcall checkbox entries))))
-    (concat box (git-islands-space 6))))
+    (concat box (tool-islands-space 6))))
 
 (defun git-islands-tree-insert-file (entry depth flat checkbox)
   "Insert ENTRY's row DEPTH levels deep; FLAT shows its folder after it."
   (magit-insert-section (git-islands-file (git-islands-entry-path entry))
-                        (git-islands-tree-row
+                        (tool-islands-row
                          depth
                          (propertize
                           (concat (git-islands-tree-checkbox checkbox (list entry))
-                                  (git-islands-file-icon entry) (git-islands-tree-gap)
+                                  (git-islands-file-icon entry) (tool-islands-gap)
                                   (git-islands-file-label entry flat))
                           'git-islands-entries (list entry) 'git-islands-entry entry))))
 
@@ -604,13 +81,13 @@ PRIMARY identifies the default action to the configured renderer."
   "Insert folder NODE's row DEPTH levels deep, then what it holds."
   (let ((entries (git-islands-tree-entries node)))
     (magit-insert-section (git-islands-dir (car node))
-                          (git-islands-tree-row
+                          (tool-islands-row
                            depth
                            (propertize
                             (concat (git-islands-tree-checkbox checkbox entries)
-                                    (git-islands-icon "nodes/folder") (git-islands-tree-gap)
-                                    (git-islands-fit (car node))
-                                    (propertize (format "  %d" (length entries)) 'face 'git-islands-dim))
+                                    (tool-islands-icon "nodes/folder") (tool-islands-gap)
+                                    (tool-islands-fit (car node))
+                                    (propertize (format "  %d" (length entries)) 'face 'tool-islands-dim))
                             'git-islands-entries entries))
                           (magit-insert-heading)
                           (git-islands-tree-insert-children node (1+ depth) checkbox))))
@@ -635,20 +112,20 @@ PRIMARY identifies the default action to the configured renderer."
   "Insert group TYPE named TITLE, then ENTRIES by folder if GROUPED.
 EMPTY is shown after the title when there are no entries."
   (magit-insert-section (git-islands-group type)
-                        (git-islands-tree-row
+                        (tool-islands-row
                          0
                          (propertize
                           (concat (if entries
                                       (git-islands-tree-checkbox checkbox entries)
                                     ;; Keep the title in line with the groups that have one.
-                                    (and checkbox (git-islands-space (+ git-islands-checkbox-size 6))))
-                                  (git-islands-fit (if (get-text-property 0 'face title) title
+                                    (and checkbox (tool-islands-space (+ tool-islands-checkbox-size 6))))
+                                  (tool-islands-fit (if (get-text-property 0 'face title) title
                                                      (propertize title 'face 'git-islands-group)))
                                   ;; A bare count, as on folders.
                                   (propertize (if entries
                                                   (format "  %d" (length entries))
                                                 (concat "  " (or empty "")))
-                                              'face 'git-islands-dim))
+                                              'face 'tool-islands-dim))
                           'git-islands-entries entries))
                         (magit-insert-heading)
                         (git-islands-tree-insert-entries entries 1 grouped checkbox)))

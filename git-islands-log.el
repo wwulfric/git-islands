@@ -68,7 +68,7 @@
 
 ;;;; Faces
 
-(defface git-islands-ref-label '((t :inherit git-islands-dim :height 0.9))
+(defface git-islands-ref-label '((t :inherit tool-islands-dim :height 0.9))
   "Names of the branches and tags at a commit: quiet, a size below the subject."
   :group 'git-islands)
 
@@ -152,7 +152,7 @@ C13.6132 7.23163 13.5608 7.38882 13.4495 7.5001Z"
 As IntelliJ's log draws it: one price tag per color, each shifted right
 of the one behind and cut out of it by a thin gap; the front one has a
 dot.  A branch with its remote is two tags, as \"origin & main\"."
-  (let* ((colors (mapcar (lambda (face) (git-islands-face-color face :foreground "#6C707E"))
+  (let* ((colors (mapcar (lambda (face) (tool-islands-face-color face :foreground "#6C707E"))
                          faces))
          (size (min 16 (frame-char-height)))
          (key (list colors size)))
@@ -167,7 +167,7 @@ dot.  A branch with its remote is two tags, as \"origin & main\"."
                 (tag (lambda (offset attributes)
                        (format "<path transform='translate(%.2f 0) scale(%.4f)' d='%s' %s/>"
                                offset scale git-islands-log-tag-path attributes))))
-           (git-islands-image-string
+           (tool-islands-image-string
             (concat
              (format "<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d'>"
                      width size)
@@ -204,14 +204,14 @@ short; with FULL every name shows in full, as the details pane does."
          (tags (seq-filter (lambda (label) (eq (car label) 'tag)) labels))
          (shown (if full branches (seq-take branches git-islands-log-ref-limit)))
          (hidden (- (length branches) (length shown)))
-         (gap (git-islands-space 10)))
+         (gap (tool-islands-space 10)))
     (mapconcat
      #'identity
      (append
       (mapcar (pcase-lambda (`(,_ ,text ,faces))
                 (propertize
                  (concat (git-islands-log-ref-icon faces)
-                         (git-islands-space 4)
+                         (tool-islands-space 4)
                          (propertize (if full text
                                        (truncate-string-to-width text git-islands-log-ref-width
                                                                  nil nil "…"))
@@ -224,7 +224,7 @@ short; with FULL every name shows in full, as the details pane does."
       (mapcar (pcase-lambda (`(,_ ,text ,faces))
                 (concat (propertize (git-islands-log-ref-icon faces) 'help-echo text)
                         (when full
-                          (concat (git-islands-space 4)
+                          (concat (tool-islands-space 4)
                                   (propertize text 'face 'git-islands-ref-label)))))
               tags))
      gap)))
@@ -293,17 +293,17 @@ Nil selects the commit at `git-islands-log-row' alone.")
 (define-derived-mode git-islands-log-mode special-mode "Git Log"
   "The commits of a repository, with their graph."
   :interactive nil
-  (git-islands-view-setup)
+  (tool-islands-view-setup)
   (setq-local buffer-undo-list t
-              line-prefix (git-islands-row-prefix 0)
-              header-line-format '(:eval (git-islands-tool-header (git-islands-log-header)))
-              git-islands-selected-rows-function #'git-islands-log-selected-rows)
+              line-prefix (tool-islands-row-prefix 0)
+              header-line-format '(:eval (tool-islands-header-line (git-islands-log-header)))
+              tool-islands-selected-rows-function #'git-islands-log-selected-rows)
   (git-islands-set-mode-line)
   ;; Rows fit their subjects themselves, where they are shown.
-  (remove-hook 'window-size-change-functions #'git-islands-fit-rows t)
-  (remove-hook 'window-buffer-change-functions #'git-islands-fit-rows t)
+  (remove-hook 'window-size-change-functions #'tool-islands-fit-rows t)
+  (remove-hook 'window-buffer-change-functions #'tool-islands-fit-rows t)
   (jit-lock-register #'git-islands-log-fontify)
-  (setq-local git-islands-refit-function #'git-islands-log-resized)
+  (setq-local tool-islands-refit-function #'git-islands-log-resized)
   (add-hook 'window-size-change-functions #'git-islands-log-resized nil t)
   (add-hook 'window-scroll-functions #'git-islands-log-scrolled nil t)
   (add-hook 'pre-command-hook #'git-islands-log-before-command nil t)
@@ -450,7 +450,7 @@ A window too narrow for the column hides it; see
 `git-islands-log-columns-shown'."
   (let ((align `(space :align-to (- right (,from-right)))))
     (concat (propertize " " 'display align 'git-islands-align align 'git-islands-column column)
-            (propertize text 'face 'git-islands-dim 'git-islands-column column))))
+            (propertize text 'face 'tool-islands-dim 'git-islands-column column))))
 
 (defun git-islands-log-columns-shown (width)
   "Return the columns a table WIDTH pixels wide has room for."
@@ -462,7 +462,7 @@ A window too narrow for the column hides it; see
   (let ((inhibit-read-only t))
     (save-excursion
       (goto-char (point-max))
-      (insert (propertize "No commits matching filters" 'face 'git-islands-dim) "\n"))))
+      (insert (propertize "No commits matching filters" 'face 'tool-islands-dim) "\n"))))
 
 (defun git-islands-log-after-batch ()
   "Select a commit that has just been listed, and keep the selection drawn."
@@ -499,8 +499,8 @@ A window too narrow for the column hides it; see
 (defun git-islands-log-fontify (start end)
   "Add graph images and fit subjects on the rows between START and END."
   (let ((window (get-buffer-window (current-buffer)))
-        (height (git-islands-row-pixels))
-        (background (git-islands-face-color 'default :background "#FFFFFF"))
+        (height (tool-islands-row-pixels))
+        (background (tool-islands-face-color 'default :background "#FFFFFF"))
         (inhibit-read-only t))
     (with-silent-modifications
       (save-excursion
@@ -551,7 +551,7 @@ and shorten its subject to fit before them."
                                                    (current-buffer))
                        0))
              (refs (if align (+ labels git-islands-log-ref-gap) 0))
-             (room (- width git-islands-row-inset graph columns refs 16)))
+             (room (- width tool-islands-row-inset graph columns refs 16)))
         (when align
           (put-text-property align (1+ align) 'display
                              `(space :align-to (- right (,(+ columns refs))))))
@@ -735,7 +735,7 @@ Rows outside the viewport are fitted on demand when scrolled into view."
             git-islands-log-anchor nil))
     (setq git-islands-log-row (pos-bol)))
   (setq git-islands-log-command-row nil)
-  (git-islands-highlight)
+  (tool-islands-highlight)
   (when-let* ((window (get-buffer-window (current-buffer))))
     (git-islands-log-maybe-more window))
   (let* ((commits (delq nil (mapcar (lambda (row) (get-text-property row 'git-islands-commit))
@@ -882,18 +882,18 @@ open, and the open filter's own chip closes it, so popups never stack."
 (defun git-islands-log-chip (label value action)
   "Return a filter chip LABEL showing VALUE, running ACTION when clicked.
 As in IntelliJ, a chip names its value only once one is set."
-  (apply #'git-islands-header-button action (format "Filter by %s" (downcase label))
+  (apply #'tool-islands-header-button action (format "Filter by %s" (downcase label))
          (append (if value
-                     (list (propertize (concat " " label ": ") 'face 'git-islands-dim)
+                     (list (propertize (concat " " label ": ") 'face 'tool-islands-dim)
                            (propertize value 'face 'git-islands-modified))
                    (list (propertize (concat " " label) 'face 'default)))
-                 (list (propertize " ▾ " 'face 'git-islands-dim)))))
+                 (list (propertize " ▾ " 'face 'tool-islands-dim)))))
 
 (defun git-islands-log-header ()
   "Return the table's header: its filters."
   (let ((filters git-islands-log-filters))
-    (concat (propertize " " 'face 'header-line 'display (git-islands-header-space 0))
-            (propertize " Log " 'face 'git-islands-title)
+    (concat (propertize " " 'face 'header-line 'display (tool-islands-header-space 0))
+            (propertize " Log " 'face 'tool-islands-title)
             (git-islands-log-chip "Branch" (plist-get filters :branch) #'git-islands-log-filter-branch)
             (git-islands-log-chip "User" (plist-get filters :user) #'git-islands-log-filter-user)
             (git-islands-log-chip "Date" (plist-get filters :since) #'git-islands-log-filter-date)
@@ -1087,10 +1087,10 @@ Each is (LABEL . FUNCTION); one commit has more, as IntelliJ's log."
               magit-section-highlight-selection nil
               magit-section-visibility-indicators nil)
   ;; File rows fit; the message is broken into rows as wide as the pane.
-  (git-islands-view-setup)
+  (tool-islands-view-setup)
   (add-hook 'window-size-change-functions #'git-islands-details-resized nil t)
-  (setq-local git-islands-refit-function #'git-islands-details-resized)
-  (setq-local header-line-format '(:eval (git-islands-tool-header (git-islands-details-header))))
+  (setq-local tool-islands-refit-function #'git-islands-details-resized)
+  (setq-local header-line-format '(:eval (tool-islands-header-line (git-islands-details-header))))
   (git-islands-set-mode-line))
 
 (defun git-islands-details-buffer (root)
@@ -1166,12 +1166,12 @@ A file keeps the status its first change gave it, unless it is gone."
   (let ((entries (git-islands-commits-files git-islands-details-root commits)))
     (if entries
         (git-islands-tree-insert-entries entries 0 t nil)
-      (git-islands-tree-row 0 (propertize "No changed files" 'face 'git-islands-dim))))
-  (git-islands-tree-row 0 "")
-  (git-islands-tree-row 0 (propertize (format "%d commits" (length commits)) 'face 'git-islands-dim))
+      (tool-islands-row 0 (propertize "No changed files" 'face 'tool-islands-dim))))
+  (tool-islands-row 0 "")
+  (tool-islands-row 0 (propertize (format "%d commits" (length commits)) 'face 'tool-islands-dim))
   (dolist (commit commits)
-    (git-islands-tree-row 0 (propertize (substring (git-islands-commit-hash commit) 0 8)
-                                        'face 'git-islands-dim)
+    (tool-islands-row 0 (propertize (substring (git-islands-commit-hash commit) 0 8)
+                                        'face 'tool-islands-dim)
                           "  " (git-islands-commit-subject commit))))
 
 (defun git-islands-details-render (commit)
@@ -1184,7 +1184,7 @@ COMMIT can be a list of commits, newest first, when several are selected."
     (magit-insert-section (git-islands-details)
                           (cond
                            ((not commit)
-                            (git-islands-tree-row 0 (propertize "Select a commit" 'face 'git-islands-dim)))
+                            (tool-islands-row 0 (propertize "Select a commit" 'face 'tool-islands-dim)))
                            ((consp commit)
                             (git-islands-details-render-several commit))
                            (t
@@ -1192,31 +1192,31 @@ COMMIT can be a list of commits, newest first, when several are selected."
                             (let ((entries (git-islands-commit-files git-islands-details-root (git-islands-commit-hash commit))))
                               (if entries
                                   (git-islands-tree-insert-entries entries 0 t nil)
-                                (git-islands-tree-row 0 (propertize "No changed files" 'face 'git-islands-dim))))
-                            (git-islands-tree-row 0 "")
+                                (tool-islands-row 0 (propertize "No changed files" 'face 'tool-islands-dim))))
+                            (tool-islands-row 0 "")
                             (let ((window (get-buffer-window (current-buffer))))
                               (setq git-islands-details-width (and window (window-body-width window t)))
-                              (dolist (line (git-islands-wrap (git-islands-details-message commit)
+                              (dolist (line (tool-islands-wrap (git-islands-details-message commit)
                                                               (- (or git-islands-details-width 320)
-                                                                 git-islands-row-inset (git-islands-fit-margin))))
-                                (git-islands-tree-row 0 line)))
-                            (git-islands-tree-row 0 "")
+                                                                 tool-islands-row-inset (tool-islands-fit-margin))))
+                                (tool-islands-row 0 line)))
+                            (tool-islands-row 0 "")
                             ;; One fact a row, so a narrow pane wraps none of them.
-                            (git-islands-tree-row 0 (propertize (git-islands-commit-author commit) 'face 'git-islands-dim)
+                            (tool-islands-row 0 (propertize (git-islands-commit-author commit) 'face 'tool-islands-dim)
                                                   (propertize (concat "  <" (git-islands-commit-email commit) ">")
-                                                              'face 'git-islands-dim))
-                            (git-islands-tree-row 0 (propertize (format-time-string "%Y/%m/%d %H:%M"
+                                                              'face 'tool-islands-dim))
+                            (tool-islands-row 0 (propertize (format-time-string "%Y/%m/%d %H:%M"
                                                                                     (git-islands-commit-time commit))
-                                                                'face 'git-islands-dim)
+                                                                'face 'tool-islands-dim)
                                                   "  "
                                                   (propertize (substring (git-islands-commit-hash commit) 0 8)
-                                                              'face 'git-islands-dim))
+                                                              'face 'tool-islands-dim))
                             (when (git-islands-commit-refs commit)
-                              (git-islands-tree-row 0 (git-islands-log-ref-labels (git-islands-commit-refs commit) t))))))
-    (git-islands-tree-draw-chevrons)
+                              (tool-islands-row 0 (git-islands-log-ref-labels (git-islands-commit-refs commit) t))))))
+    (tool-islands-draw-chevrons)
     (goto-char (point-min))
-    (git-islands-fit-rows)
-    (git-islands-highlight)))
+    (tool-islands-fit-rows)
+    (tool-islands-highlight)))
 
 (defun git-islands-details-resized (window)
   "Break the message again when WINDOW, showing the pane, changed width."
@@ -1226,21 +1226,15 @@ COMMIT can be a list of commits, newest first, when several are selected."
 
 (defun git-islands-details-header ()
   "Return the details pane's header."
-  (concat (propertize " " 'face 'header-line 'display (git-islands-header-space 0))
-          (propertize " Changes" 'face 'git-islands-title)
+  (concat (propertize " " 'face 'header-line 'display (tool-islands-header-space 0))
+          (propertize " Changes" 'face 'tool-islands-title)
           (when-let* ((commit git-islands-details-commit))
             (propertize (concat "  " (if (consp commit)
                                          (format "%d commits" (length commit))
                                        (substring (git-islands-commit-hash commit) 0 8)))
-                        'face 'git-islands-dim))))
+                        'face 'tool-islands-dim))))
 
-(defun git-islands-details-toggle ()
-  "Fold or unfold the folder at point."
-  (interactive)
-  (when-let* ((section (magit-current-section)))
-    (when (oref section content)
-      (magit-section-toggle section)
-      (git-islands-tree-draw-chevron section))))
+(defalias 'git-islands-details-toggle #'tool-islands-toggle-section)
 
 (defun git-islands-details-show-file ()
   "Show the file at point side by side, before and after the commit."
@@ -1298,12 +1292,12 @@ COMMIT can be a list of commits, newest first, when several are selected."
   (setq-local magit-section-highlight-current nil
               magit-section-highlight-selection nil
               magit-section-visibility-indicators nil)
-  (git-islands-view-setup)
+  (tool-islands-view-setup)
   (setq-local header-line-format
-              '(:eval (git-islands-tool-header
+              '(:eval (tool-islands-header-line
                        (concat (propertize " " 'face 'header-line
-                                           'display (git-islands-header-space 0))
-                               (propertize " Branches" 'face 'git-islands-title)))))
+                                           'display (tool-islands-header-space 0))
+                               (propertize " Branches" 'face 'tool-islands-title)))))
   (git-islands-set-mode-line))
 
 (defun git-islands-refs-buffer (root)
@@ -1319,9 +1313,9 @@ COMMIT can be a list of commits, newest first, when several are selected."
 
 (defun git-islands-refs-row (depth label value &optional face icon)
   "Insert a branch row DEPTH deep showing LABEL, filtering the log to VALUE."
-  (git-islands-tree-row depth
-                        (propertize (concat (when icon (concat (git-islands-icon icon) (git-islands-tree-gap)))
-                                            (git-islands-fit (propertize label 'face face)))
+  (tool-islands-row depth
+                        (propertize (concat (when icon (concat (tool-islands-icon icon) (tool-islands-gap)))
+                                            (tool-islands-fit (propertize label 'face face)))
                                     'git-islands-ref (or value 'all))))
 
 (defun git-islands-refs-render ()
@@ -1338,14 +1332,14 @@ COMMIT can be a list of commits, newest first, when several are selected."
                                            ("Remote" . ,(seq-filter #'git-islands-branch-remote branches))))
                             (when (cdr group)
                               (magit-insert-section (git-islands-group (car group))
-                                                    (git-islands-tree-row 0 (propertize (car group) 'face 'git-islands-group))
+                                                    (tool-islands-row 0 (propertize (car group) 'face 'git-islands-group))
                                                     (magit-insert-heading)
                                                     (dolist (branch (cdr group))
                                                       (magit-insert-section (git-islands-ref (git-islands-branch-name branch))
                                                                             (git-islands-refs-row 1 (git-islands-branch-name branch) (git-islands-branch-name branch)
                                                                                                   (when (git-islands-branch-current branch) 'git-islands-ref-head))))))))
-    (git-islands-tree-draw-chevrons)
-    (git-islands-fit-rows)
+    (tool-islands-draw-chevrons)
+    (tool-islands-fit-rows)
     (git-islands-refs-select)))
 
 (defun git-islands-refs-select ()
@@ -1366,7 +1360,7 @@ COMMIT can be a list of commits, newest first, when several are selected."
     (goto-char position)
     (dolist (window (get-buffer-window-list (current-buffer) nil t))
       (set-window-point window position))
-    (git-islands-highlight)))
+    (tool-islands-highlight)))
 
 (defun git-islands-refs-follow (root)
   "Select in ROOT's branches pane the branch its log is now filtered to."
@@ -1388,7 +1382,7 @@ COMMIT can be a list of commits, newest first, when several are selected."
   "Filter the log to the branch clicked at EVENT."
   (interactive "e")
   (mouse-set-point event)
-  (git-islands-highlight)
+  (tool-islands-highlight)
   (git-islands-refs-filter))
 
 ;;;; Tool window
@@ -1440,9 +1434,9 @@ The compact default leaves room for the commit table's author column.")
                     `((side . bottom) (slot . 1) (dedicated . t)
                       (window-width . ,(git-islands-log-pane-columns git-islands-log-details-width))
                       (window-parameters (no-delete-other-windows . t))))))
-      (git-islands-pane-keep refs (lambda ()
+      (tool-islands-pane-keep refs (lambda ()
                                     (git-islands-log-pane-pixels git-islands-log-refs-width)))
-      (git-islands-pane-keep details (lambda ()
+      (tool-islands-pane-keep details (lambda ()
                                        (git-islands-log-pane-pixels git-islands-log-details-width))))
     ;; A pixel of right fringe: without one
     ;; a selected row, which fills the window, would count as cut.

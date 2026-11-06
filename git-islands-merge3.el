@@ -24,9 +24,9 @@
 
 (declare-function git-islands-diff-blob "git-islands-diff" (root rev path))
 (declare-function git-islands-diff-blob-buffer "git-islands-diff" (label root path text))
-(declare-function git-islands-button "git-islands-tree" (label action help &optional primary))
-(declare-function git-islands-ui "git-islands-tree" (text &optional face))
-(declare-function git-islands-header-style "git-islands-tree" (enable))
+(declare-function tool-islands-button "git-islands-tree" (label action help &optional primary))
+(declare-function tool-islands-ui-text "git-islands-tree" (text &optional face))
+(declare-function tool-islands-header-style "git-islands-tree" (enable))
 (declare-function magit-run-git "magit-process" (&rest args))
 
 (defface git-islands-merge-conflict
@@ -264,15 +264,15 @@ match data, so they are valid until the buffer changes."
   :keymap git-islands-merge-pane-mode-map
   (if git-islands-merge-pane-mode
       (progn (add-hook 'after-change-functions #'git-islands-merge-after-change nil t)
-             (git-islands-header-style t))
+             (tool-islands-header-style t))
     (remove-hook 'after-change-functions #'git-islands-merge-after-change t)
-    (git-islands-header-style nil)))
+    (tool-islands-header-style nil)))
 
 (defun git-islands-merge-button (label action help)
   "Return a header button LABEL running ACTION, with tooltip HELP.
 Apply, which finishes the merge, is the default button."
   (require 'git-islands-tree)
-  (git-islands-button label action help (equal label "Apply")))
+  (tool-islands-button label action help (equal label "Apply")))
 
 (defun git-islands-merge-header (pane)
   "Return the header of the merge's PANE: `ours', `result' or `theirs'."
@@ -280,22 +280,22 @@ Apply, which finishes the merge, is the default button."
          (left (with-current-buffer (git-islands-merge-result merge)
                  (length (git-islands-merge-conflicts)))))
     (concat
-     (propertize " " 'display (git-islands-header-space '(12)))
+     (propertize " " 'display (tool-islands-header-space '(12)))
      (pcase pane
-       ('ours (concat (propertize "Yours" 'face 'git-islands-title)
-                      (git-islands-at-right (concat (git-islands-merge-button "Accept Left »"
+       ('ours (concat (propertize "Yours" 'face 'tool-islands-title)
+                      (tool-islands-at-right (concat (git-islands-merge-button "Accept Left »"
                                                                               #'git-islands-merge-accept-left
                                                                               "Accept Left (C-c C-l)")
-                                                    (git-islands-space 8)))))
+                                                    (tool-islands-space 8)))))
        ('theirs (concat (git-islands-merge-button "« Accept Right" #'git-islands-merge-accept-right
                                                   "Accept Right (C-c C-r)")
-                        (git-islands-ui "  ") (propertize "Theirs" 'face 'git-islands-title)))
-       (_ (concat (propertize "Result" 'face 'git-islands-title)
-                  (git-islands-ui (format "  %s" (if (zerop left) "all conflicts resolved"
+                        (tool-islands-ui-text "  ") (propertize "Theirs" 'face 'tool-islands-title)))
+       (_ (concat (propertize "Result" 'face 'tool-islands-title)
+                  (tool-islands-ui-text (format "  %s" (if (zerop left) "all conflicts resolved"
                                                    (format "%d %s left" left
                                                            (if (= left 1) "conflict" "conflicts"))))
                                   (if (zerop left) 'git-islands-added 'git-islands-conflict))
-                  (git-islands-at-right
+                  (tool-islands-at-right
                    (concat (git-islands-merge-button "Both" #'git-islands-merge-accept-both
                                                      "Accept Both (C-c C-b)")
                            " "
@@ -303,7 +303,7 @@ Apply, which finishes the merge, is the default button."
                                                      "Save and Mark Resolved (C-c C-c)")
                            " "
                            (git-islands-merge-button "Cancel" #'git-islands-merge-cancel "Cancel (C-c C-k)")
-                           (git-islands-space 8)))))))))
+                           (tool-islands-space 8)))))))))
 
 ;;;###autoload
 (defun git-islands-merge3 (root path)

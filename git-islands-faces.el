@@ -43,10 +43,6 @@
   "Files with unresolved merge conflicts."
   :group 'git-islands)
 
-(defface git-islands-dim '((t (:inherit shadow)))
-  "Folders after a file name, counts and hints."
-  :group 'git-islands)
-
 (defun git-islands-change-face (change)
   "Return the face of a file that changed as CHANGE."
   (pcase change
@@ -55,14 +51,6 @@
     ('untracked 'git-islands-untracked)
     ('conflict 'git-islands-conflict)
     (_ 'git-islands-modified)))
-
-(defface git-islands-button '((t (:inherit link :underline nil)))
-  "Secondary buttons, such as Commit and Push."
-  :group 'git-islands)
-
-(defface git-islands-primary-button '((t (:inherit git-islands-button :weight bold)))
-  "The default button, such as Commit."
-  :group 'git-islands)
 
 (provide 'git-islands-faces)
 ;;; git-islands-faces.el ends here

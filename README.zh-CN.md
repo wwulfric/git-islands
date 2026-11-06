@@ -32,13 +32,15 @@
 - Emacs 29.1 或更高版本，需支持 SVG（用于绘制提交图、复选框和选中行）
 - Magit 4.7 或更高版本
 - [expui-icons](https://github.com/wwulfric/expui-icons) 0.2.2 或更高版本（包含所需的 14px 复选框资源）
+- [tool-islands](https://github.com/wwulfric/tool-islands) 0.1.0 或更高版本，负责绘制工具窗口的行、标题栏和按钮；下文的外观和尺寸设置都属于它
 
 ## 安装
 
-用 `package-vc`（Emacs 29）安装。expui-icons 不在任何软件源里，要先装它：
+用 `package-vc`（Emacs 29）安装。expui-icons 和 tool-islands 不在任何软件源里，要先装它们：
 
 ```elisp
 (package-vc-install "https://github.com/wwulfric/expui-icons")
+(package-vc-install "https://github.com/wwulfric/tool-islands")
 (package-vc-install "https://github.com/wwulfric/git-islands")
 ```
 
@@ -96,19 +98,19 @@
 ```elisp
 (setq git-islands-side-window-width 44
       git-islands-message-window-height 8)
-(with-eval-after-load 'git-islands-ui
-  (setq git-islands-row-height 1.5
-        git-islands-header-height 1.8)
+(with-eval-after-load 'tool-islands
+  (setq tool-islands-row-height 1.5
+        tool-islands-header-height 1.8)
   ;; 仅让工具窗格使用编辑器的默认字体。
-  (custom-set-faces '(git-islands-ui-font ((t (:inherit default))))))
+  (custom-set-faces '(tool-islands-font ((t (:inherit default))))))
 ```
 
 提交信息区初始总高度为 8 行（包括表头和 mode line），可手动调整；再次显示已打开的窗格不会重置高度。
 将 `git-islands-message-window-height` 设为 `0.3` 可恢复此前的比例高度；设置对新窗口生效。
 
 宽度以列为单位；行高以 frame 字符高度为单位，表头高度以字体单位计算。
-默认 UI 字体继承 `variable-pitch`。标题用 `git-islands-title`，
-列表文字用 `git-islands-file-name`。
+默认 UI 字体继承 `variable-pitch`。标题用 `tool-islands-title`，
+列表文字用 `tool-islands-text`。
 
 ### Log 窗格宽度
 
@@ -184,12 +186,12 @@ Diff 源码缓冲区保留自身的 mode line。
 如果会切换主题，请同时提供深浅背景两种定义。以下示例不依赖任何个人 face 或函数：
 
 ```elisp
-(with-eval-after-load 'git-islands-ui
+(with-eval-after-load 'tool-islands
   (custom-set-faces
-   '(git-islands-hl-line
+   '(tool-islands-hl-line
      ((((background dark)) (:background "#30476A"))
       (t (:background "#DCE8FA"))))
-   '(git-islands-hl-line-inactive
+   '(tool-islands-hl-line-inactive
      ((((background dark)) (:background "#383B40"))
       (t (:background "#ECEEF2"))))))
 
@@ -213,23 +215,23 @@ Diff 配色单独定义在 `git-islands-diff.el`，还包括 `git-islands-diff-m
 Commit 和 Log 不再显示刷新、隐藏图标，仍可使用 `g` 和 `q`；Log 的 `C`
 仍用于清除筛选。
 
-需要圆角选中行时，在 `git-islands-ui` 加载后设置 `git-islands-hl-radius`
-和 `git-islands-hl-margin`，并让 `git-islands-row-inset` 至少等于两者之和。
-需要圆角按钮时，在 `git-islands-tree` 加载后将
-`git-islands-button-render-function` 设为 `git-islands-button-rounded`，通过
-`git-islands-button-radius`（nil 表示胶囊）、`git-islands-button-padding`
+需要圆角选中行时，在 `tool-islands` 加载后设置 `tool-islands-hl-radius`
+和 `tool-islands-hl-margin`，并让 `tool-islands-row-inset` 至少等于两者之和。
+需要圆角按钮时，在 `tool-islands` 加载后将
+`tool-islands-button-render-function` 设为 `tool-islands-button-rounded`，通过
+`tool-islands-button-radius`（nil 表示胶囊）、`tool-islands-button-padding`
 和按钮 face 调整外观。自定义渲染函数接收 `(label primary)` 并返回显示字符串，
-库统一添加点击、悬停和提示行为。默认渲染函数为 `git-islands-button-text`。
+库统一添加点击、悬停和提示行为。默认渲染函数为 `tool-islands-button-text`。
 下面的示例演示如何显式启用装饰样式。
 
-所有窗格的表头统一使用 `git-islands-header` 设置背景与字体。
+所有窗格的表头统一使用 `tool-islands-header` 设置背景与字体。
 表头用一像素内嵌 `:box` 标记实际边缘，可修改颜色或设为 nil 隐藏。
 高度按表头字体计算，并为图标和圆角按钮留出空间。
-`git-islands-header-padding` 控制内容上下的最小留白。`git-islands-header-ascent` 默认 nil，
+`tool-islands-header-padding` 控制内容上下的最小留白。`tool-islands-header-ascent` 默认 nil，
 自动计算文字的垂直居中；已有配置中的百分比数值仍然有效。
-需要与编辑器其他组件精确对齐时，可设置 `git-islands-header-space-function`，
+需要与编辑器其他组件精确对齐时，可设置 `tool-islands-header-space-function`，
 函数接收 WIDTH 并返回撑高空白的 display spec；nil 保留库的自动测量。
-`git-islands-ui-font` 只应设置字体属性；让行内文字继承 `default` 会连同背景一起继承，
+`tool-islands-font` 只应设置字体属性；让行内文字继承 `default` 会连同背景一起继承，
 覆盖表头本身的背景。
 
 布局变化后，提交信息正文至少保留四个字体行高，可通过
@@ -250,19 +252,19 @@ Diff 期间暂时关闭软换行，保证逻辑行对齐，退出后恢复原来
 
 | 变量 | 调用约定与默认行为 |
 |---|---|
-| `git-islands-header-function` | 接收一个表头 mode line format，返回 mode line format；默认为 `identity`。重绘时在工具缓冲区中调用，选中的窗口未必是该缓冲区的窗口。应保持轻量且无副作用。 |
-| `git-islands-background-function` | 无参数，返回 Emacs 颜色字符串或 `nil`；绘制或初始化时在工具缓冲区中调用。默认 `nil` 使用 default face 的背景。修改后重新创建缓冲区以更新表头 remapping。 |
+| `tool-islands-header-function` | 接收一个表头 mode line format，返回 mode line format；默认为 `identity`。重绘时在工具缓冲区中调用，选中的窗口未必是该缓冲区的窗口。应保持轻量且无副作用。 |
+| `tool-islands-background-function` | 无参数，返回 Emacs 颜色字符串或 `nil`；绘制或初始化时在工具缓冲区中调用。默认 `nil` 使用 default face 的背景。修改后重新创建缓冲区以更新表头 remapping。 |
 | `git-islands-with-anchor-function` | 接收两个无参数函数 `ANCHOR` 和 `READ`。`ANCHOR` 返回 frame 内像素坐标 `(X Y 0)`（无 Log 窗口时为 `nil`），定位时再求值。在发起过滤操作的上下文中同步调用 `READ`，返回其结果，保留退出和错误行为。默认只调用 `READ`。 |
 | `git-islands-fallback-directory-function` | 无参数，在未找到仓库时于发起命令的缓冲区中调用，返回目录字符串或 `nil`。默认 `nil` 不提供后备目录。 |
 | `git-islands-side-window-width` | 正整数列数，或返回列数的无参数函数；默认 40。打开和调整窗格时调用，不应假定当前是工具缓冲区。请在打开窗格前设置。 |
 | `git-islands-side-window-hook` | 无参数 hook，在创建 Commit 缓冲区之后、显示窗口之前运行；当前仍是发起操作的缓冲区，忽略返回值。默认空，可用于隐藏另一侧栏以腾出空间。 |
-| `git-islands-line-end-inset` | 表头右侧保留的像素数，或绘制时返回像素数的无参数函数；默认 0，可配合编辑器的圆角边缘。 |
+| `tool-islands-line-end-inset` | 表头右侧保留的像素数，或绘制时返回像素数的无参数函数；默认 0，可配合编辑器的圆角边缘。 |
 
 这些回调均为可选。例如，以下完整实现保留普通表头和 minibuffer 行为：
 
 ```elisp
-(setq git-islands-header-function (lambda (format) format)
-      git-islands-background-function (lambda () nil)
+(setq tool-islands-header-function (lambda (format) format)
+      tool-islands-background-function (lambda () nil)
       git-islands-with-anchor-function
       (lambda (_anchor read) (funcall read)))
 ```
@@ -281,7 +283,7 @@ make test      # 运行 ERT 测试
 ```
 
 Makefile 在 `DEPS` 下查找依赖，每个依赖一个目录。默认在本 checkout 的同级目录中查找，
-即作为子模块与 Magit、expui-icons 放在一起的情况。也可以指定其他位置，例如
+即作为子模块与 Magit、expui-icons、tool-islands 放在一起的情况。也可以指定其他位置，例如
 `make test DEPS=~/.emacs.d/elpa`。
 
 ## 许可证

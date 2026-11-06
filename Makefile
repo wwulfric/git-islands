@@ -4,7 +4,7 @@
 EMACS ?= emacs
 DEPS ?= ..
 LOAD_PATH = -L . -L test \
-	$(foreach dep,magit/lisp transient/lisp with-editor/lisp compat cond-let dash llama expui-icons, \
+	$(foreach dep,magit/lisp transient/lisp with-editor/lisp compat cond-let dash llama expui-icons tool-islands, \
 	  -L $(DEPS)/$(dep))
 
 .PHONY: all test compile clean

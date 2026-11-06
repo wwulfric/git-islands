@@ -29,24 +29,6 @@ file list's window always hides its mode line above the message pane."
   :type 'sexp
   :group 'git-islands)
 
-(defcustom git-islands-header-function #'identity
-  "Function given a tool window's header format, returning the one to show.
-Called with one mode line format in the tool buffer during header
-redisplay; return a mode line format.  The selected window need not be
-that buffer's window.  Keep this function cheap and free of side effects.
-The default is `identity'."
-  :type 'function
-  :group 'git-islands)
-
-(defcustom git-islands-background-function nil
-  "Function returning the color the tool windows are drawn on, or nil.
-Called without arguments in the tool buffer while drawing or setting up
-its header.  Return an Emacs color string.  Nil, or a function returning
-nil, means the default face's background.  Existing header face remappings
-are set at mode initialization; recreate buffers after changing this."
-  :type '(choice (const nil) function)
-  :group 'git-islands)
-
 (defcustom git-islands-with-anchor-function
   (lambda (_anchor read) (funcall read))
   "Function calling READ, which reads in the minibuffer, below ANCHOR.

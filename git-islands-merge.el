@@ -106,7 +106,7 @@
 (defun git-islands-operation-banner (root state)
   "Return a row naming ROOT's operation STATE with buttons to finish it."
   (let ((button (lambda (label action)
-                  (git-islands-button label (lambda (&rest _) (interactive) (funcall action root))
+                  (tool-islands-button label (lambda (&rest _) (interactive) (funcall action root))
                                       label (equal label "Continue")))))
     (concat (propertize (concat (git-islands-operation-label state) "…") 'face 'git-islands-conflict)
             "  "
@@ -142,7 +142,7 @@
   (setq-local magit-section-highlight-current nil
               magit-section-highlight-selection nil
               magit-section-visibility-indicators nil)
-  (git-islands-view-setup)
+  (tool-islands-view-setup)
   ;; An editor tab, unlike the tool windows.
   (setq-local tab-line-exclude nil
               header-line-format '(:eval (git-islands-conflicts-header))))
@@ -169,22 +169,22 @@
     (magit-insert-section (git-islands-conflicts)
                           (if (null entries)
                               (progn
-                                (git-islands-tree-row 0 (propertize "All conflicts are resolved" 'face 'git-islands-added))
+                                (tool-islands-row 0 (propertize "All conflicts are resolved" 'face 'git-islands-added))
                                 (when state
-                                  (git-islands-tree-row 0 (git-islands-operation-banner root state))))
-                            (git-islands-tree-row 0 (propertize (format "%s: %d %s in conflict"
+                                  (tool-islands-row 0 (git-islands-operation-banner root state))))
+                            (tool-islands-row 0 (propertize (format "%s: %d %s in conflict"
                                                                         (or (git-islands-operation-label state) "Conflicts")
                                                                         (length entries)
                                                                         (if (cdr entries) "files" "file"))
                                                                 'face 'git-islands-group))
                             (dolist (entry entries)
                               (pcase-let ((`(,ours ,theirs) (git-islands-conflict-sides entry)))
-                                (git-islands-tree-row
+                                (tool-islands-row
                                  1 (propertize
-                                    (concat (git-islands-file-icon entry) (git-islands-tree-gap)
+                                    (concat (git-islands-file-icon entry) (tool-islands-gap)
                                             (propertize (git-islands-entry-path entry) 'face 'git-islands-conflict)
                                             (propertize (format "   Yours: %s   Theirs: %s" ours theirs)
-                                                        'face 'git-islands-dim))
+                                                        'face 'tool-islands-dim))
                                     'git-islands-entry entry))))))
     ;; Unlike the tool windows, the dialog is an ordinary buffer, where
     ;; Font Lock would strip plain faces.
@@ -200,16 +200,16 @@
       (when-let* ((first (text-property-any (point-min) (point-max) 'git-islands-entry
                                             (car entries))))
         (goto-char first)))
-    (git-islands-fit-rows)
-    (git-islands-highlight)))
+    (tool-islands-fit-rows)
+    (tool-islands-highlight)))
 
 (defun git-islands-conflicts-header ()
   "Return the dialog's header: its three ways out."
   (let ((button (lambda (label action help)
-                  (git-islands-button label action help (equal label "Merge…")))))
-    (concat (propertize " " 'face 'header-line 'display (git-islands-header-space 0))
+                  (tool-islands-button label action help (equal label "Merge…")))))
+    (concat (propertize " " 'face 'header-line 'display (tool-islands-header-space 0))
             (propertize " " 'display '(space :width (12)))
-            (propertize "Conflicts   " 'face 'git-islands-title)
+            (propertize "Conflicts   " 'face 'tool-islands-title)
             (funcall button "Accept Yours" #'git-islands-conflicts-accept-yours "Accept Yours (y)")
             " "
             (funcall button "Accept Theirs" #'git-islands-conflicts-accept-theirs "Accept Theirs (t)")

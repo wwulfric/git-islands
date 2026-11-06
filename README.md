@@ -35,14 +35,16 @@ fonts, faces and toolbar. [Reproduce this demo](docs/screenshots.md).
 - Emacs 29.1 or later, with SVG support for the graph, checkboxes and pills
 - Magit 4.7 or later
 - [expui-icons](https://github.com/wwulfric/expui-icons) 0.2.2 or later (includes the required 14px checkbox resources)
+- [tool-islands](https://github.com/wwulfric/tool-islands) 0.1.0 or later, which draws the tool windows' rows, headers and buttons; the faces and sizes below are its own
 
 ## Install
 
-With `package-vc` (Emacs 29). expui-icons is in no package archive, so install it
-first:
+With `package-vc` (Emacs 29). expui-icons and tool-islands are in no package
+archive, so install them first:
 
 ```elisp
 (package-vc-install "https://github.com/wwulfric/expui-icons")
+(package-vc-install "https://github.com/wwulfric/tool-islands")
 (package-vc-install "https://github.com/wwulfric/git-islands")
 ```
 
@@ -103,11 +105,11 @@ so defer their settings until those modules have defined their faces:
 ```elisp
 (setq git-islands-side-window-width 44
       git-islands-message-window-height 8)
-(with-eval-after-load 'git-islands-ui
-  (setq git-islands-row-height 1.5
-        git-islands-header-height 1.8)
+(with-eval-after-load 'tool-islands
+  (setq tool-islands-row-height 1.5
+        tool-islands-header-height 1.8)
   ;; Use the editor's default font in tool panes only.
-  (custom-set-faces '(git-islands-ui-font ((t (:inherit default))))))
+  (custom-set-faces '(tool-islands-font ((t (:inherit default))))))
 ```
 
 The message pane starts at 8 total lines (including header and mode line),
@@ -117,7 +119,7 @@ fractional height; new windows use the setting.
 
 Width is in columns; row height is in frame character units and header height
 is in font units. The default UI font inherits `variable-pitch`. Use
-`git-islands-title` for headings and `git-islands-file-name` for list text.
+`tool-islands-title` for headings and `tool-islands-text` for list text.
 
 ### Log pane widths
 
@@ -206,12 +208,12 @@ specs, which take precedence over theme faces. Use both light and dark clauses
 if you switch themes. These examples require no personal faces or functions:
 
 ```elisp
-(with-eval-after-load 'git-islands-ui
+(with-eval-after-load 'tool-islands
   (custom-set-faces
-   '(git-islands-hl-line
+   '(tool-islands-hl-line
      ((((background dark)) (:background "#30476A"))
       (t (:background "#DCE8FA"))))
-   '(git-islands-hl-line-inactive
+   '(tool-islands-hl-line-inactive
      ((((background dark)) (:background "#383B40"))
       (t (:background "#ECEEF2"))))))
 
@@ -236,26 +238,26 @@ Defaults inherit the editor font and selection faces, with square selections
 and text action buttons. Commit and Log omit refresh and hide icons; use `g`
 and `q`. Log's `C` still clears filters.
 
-For rounded selections, set `git-islands-hl-radius` and
-`git-islands-hl-margin` after loading `git-islands-ui`. Keep
-`git-islands-row-inset` at least their sum. For rounded buttons, set
-`git-islands-button-render-function` to `git-islands-button-rounded` after
-loading `git-islands-tree`; customize `git-islands-button-radius` (nil means
-pill-shaped), `git-islands-button-padding`, and the button faces.
+For rounded selections, set `tool-islands-hl-radius` and
+`tool-islands-hl-margin` after loading `tool-islands`. Keep
+`tool-islands-row-inset` at least their sum. For rounded buttons, set
+`tool-islands-button-render-function` to `tool-islands-button-rounded` after
+loading `tool-islands`; customize `tool-islands-button-radius` (nil means
+pill-shaped), `tool-islands-button-padding`, and the button faces.
 A custom renderer takes `(label primary)` and returns a display string;
 Git Islands adds click handling, hover and help text. The default renderer is
-`git-islands-button-text`. See the example below for an opt-in styled setup.
+`tool-islands-button-text`. See the example below for an opt-in styled setup.
 
-Header backgrounds and typography use `git-islands-header` across all panes.
+Header backgrounds and typography use `tool-islands-header` across all panes.
 The header uses a one-pixel inset `:box` at its actual edges; customize its
 color or set it to nil to hide it. Height is measured from the header font,
-with room for icons and rounded buttons. `git-islands-header-padding` controls
-the minimum padding above and below content. `git-islands-header-ascent` defaults to nil for automatic
+with room for icons and rounded buttons. `tool-islands-header-padding` controls
+the minimum padding above and below content. `tool-islands-header-ascent` defaults to nil for automatic
 vertical centering; explicit percentages remain supported.
 For exact alignment with another editor component, set
-`git-islands-header-space-function` to a function taking WIDTH and returning
+`tool-islands-header-space-function` to a function taking WIDTH and returning
 a spacer display spec. Nil retains the automatic default measurements.
-Keep `git-islands-ui-font` limited to font attributes: inheriting `default`
+Keep `tool-islands-font` limited to font attributes: inheriting `default`
 on inline text also imports its background, covering the header beneath it.
 
 The commit message body keeps at least four frame text lines after layout
@@ -280,20 +282,20 @@ promise live restyling of every open pane.
 
 | Variable | Contract and default |
 |---|---|
-| `git-islands-header-function` | Receives a header mode line format; returns a mode line format. Defaults to `identity`. Runs in the tool buffer during redisplay; the selected window may differ. Keep it cheap and free of side effects. |
-| `git-islands-background-function` | No arguments; returns an Emacs color string or `nil`. Runs in the tool buffer during drawing/setup. Default `nil` uses the default face background. Recreate buffers to update header remappings. |
+| `tool-islands-header-function` | Receives a header mode line format; returns a mode line format. Defaults to `identity`. Runs in the tool buffer during redisplay; the selected window may differ. Keep it cheap and free of side effects. |
+| `tool-islands-background-function` | No arguments; returns an Emacs color string or `nil`. Runs in the tool buffer during drawing/setup. Default `nil` uses the default face background. Recreate buffers to update header remappings. |
 | `git-islands-with-anchor-function` | Receives `ANCHOR` and `READ`, both zero-argument functions. `ANCHOR` returns frame pixel position `(X Y 0)`, or `nil` if no log window exists; evaluate it when positioning. Call `READ` synchronously in the invoking filter's context, return its result and preserve quit/errors. Default just calls `READ`. |
 | `git-islands-fallback-directory-function` | No arguments; returns a directory string or `nil`, in the invoking command's buffer when no repository was found. Default `nil` supplies no fallback. |
 | `git-islands-side-window-width` | Positive column count, or a zero-argument function returning one. Default 40. Called during opening/resizing; do not assume a tool buffer is current. Set before opening the pane. |
 | `git-islands-side-window-hook` | Zero-argument hook, before displaying Commit windows, after creating their buffers. Runs in the invoking buffer; return values are ignored. Default empty. Can make room by hiding another sidebar. |
-| `git-islands-line-end-inset` | Pixels reserved at the right of headers, or a zero-argument function returning them while drawing. Default 0; useful when your editor draws rounded corners. |
+| `tool-islands-line-end-inset` | Pixels reserved at the right of headers, or a zero-argument function returning them while drawing. Default 0; useful when your editor draws rounded corners. |
 
 Callbacks are optional. For example, these complete implementations preserve
 ordinary headers and minibuffer behavior:
 
 ```elisp
-(setq git-islands-header-function (lambda (format) format)
-      git-islands-background-function (lambda () nil)
+(setq tool-islands-header-function (lambda (format) format)
+      tool-islands-background-function (lambda () nil)
       git-islands-with-anchor-function
       (lambda (_anchor read) (funcall read)))
 ```
@@ -316,7 +318,7 @@ make test      # run the ERT suite
 
 The Makefile looks for dependencies under `DEPS`, one directory each:
 by default beside this checkout, as when it is a submodule next to
-Magit and expui-icons.  Point it elsewhere with, say,
+Magit, expui-icons and tool-islands.  Point it elsewhere with, say,
 `make test DEPS=~/.emacs.d/elpa`.
 
 ## License

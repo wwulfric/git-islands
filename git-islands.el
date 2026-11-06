@@ -5,7 +5,7 @@
 
 ;; Author: haidao
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (magit "4.7") (expui-icons "0.2.2"))
+;; Package-Requires: ((emacs "29.1") (magit "4.7") (expui-icons "0.2.2") (tool-islands "0.1.0"))
 ;; Keywords: vc, tools
 ;; URL: https://github.com/wwulfric/git-islands
 
@@ -27,7 +27,7 @@
 ;; The tool windows ask the editor around them through the variables in
 ;; git-islands-env.el (status line, header corners, where popups drop
 ;; down from, what makes room for the Commit tool window) and draw with
-;; the faces and sizes in git-islands-ui.el.  Their defaults work in a
+;; the faces and sizes of the tool-islands package.  Their defaults work in a
 ;; bare Emacs; a configuration can tie them to its own look.
 
 ;;; Code:

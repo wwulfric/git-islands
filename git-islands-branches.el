@@ -17,6 +17,7 @@
 (require 'subr-x)
 (require 'git-islands-core)
 (require 'git-islands-faces)
+(require 'tool-islands)
 (require 'git-islands-env)
 
 (declare-function magit-diff-range "magit-diff" (rev-or-range &optional args files))
@@ -99,7 +100,7 @@ The current branch is left out; at most LIMIT, 5 by default, are returned."
                                 (format "↓%d" (git-islands-branch-behind branch)))
                            (git-islands-branch-upstream branch)))))
     (when parts
-      (propertize (concat "  " (string-join parts "  ")) 'face 'git-islands-dim))))
+      (propertize (concat "  " (string-join parts "  ")) 'face 'tool-islands-dim))))
 
 (defconst git-islands-popup-actions
   '(("Update Project…" . git-islands-update-project)
