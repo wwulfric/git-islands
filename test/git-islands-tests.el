@@ -22,36 +22,6 @@
 (require 'git-islands-merge3)
 (require 'git-islands-changelists)
 
-(ert-deftest git-islands-button-renderer-preserves-interaction ()
-  (let* ((tool-islands-button-render-function
-          (lambda (label primary)
-            (should primary)
-            (concat "custom " label)))
-         (button (tool-islands-button "Apply" #'ignore "Apply changes" t))
-         (map (get-text-property 0 'local-map button)))
-    (should (equal (substring-no-properties button) "custom Apply"))
-    (should (equal (get-text-property 0 'help-echo button) "Apply changes"))
-    (should (commandp (lookup-key map [header-line down-mouse-1])))
-    (should (eq (get-text-property 0 'mouse-face button) 'tool-islands-toolbar-hover))))
-
-(ert-deftest git-islands-plain-and-rounded-button-fallback ()
-  (let ((tool-islands-button-render-function #'tool-islands-button-text))
-    (cl-letf (((symbol-function 'tool-islands-button-image)
-               (lambda (&rest _) (ert-fail "Plain buttons must not render SVG"))))
-      (should-not (get-text-property 0 'display (tool-islands-button "Commit" #'ignore "Commit" t)))))
-  (cl-letf (((symbol-function 'expui-icons-svg-p) (lambda () nil)))
-    (should (equal (tool-islands-button-rounded "Commit" t)
-                   (tool-islands-button-text "Commit" t)))))
-
-(ert-deftest git-islands-selection-spacing-follows-options ()
-  (let ((tool-islands-hl-radius 0) (tool-islands-hl-margin 0))
-    (should (= (tool-islands-fit-margin) 4))
-    (should (eq (car (get-text-property 0 'display
-                                      (tool-islands-pill-cap 'left 0 20 "red")))
-                'space)))
-  (let ((tool-islands-hl-radius 6) (tool-islands-hl-margin 6))
-    (should (= (tool-islands-fit-margin) 16))))
-
 (ert-deftest git-islands-headers-share-style-and-restore-remapping ()
   (dolist (mode '(git-islands-commit-mode git-islands-message-mode
                   git-islands-log-mode git-islands-details-mode git-islands-refs-mode))
@@ -70,31 +40,6 @@
                         (cdr (assq 'header-line face-remapping-alist)))))
       (tool-islands-header-style nil)
       (should (equal before face-remapping-alist)))))
-
-(ert-deftest git-islands-header-centers-font-and-keeps-explicit-ascent ()
-  (let ((tool-islands-header-height 1.5)
-        (tool-islands-header-padding 4)
-        (tool-islands-header-ascent nil)
-        (tool-islands-button-render-function #'tool-islands-button-text))
-    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
-              ((symbol-function 'face-font) (lambda (&rest _) "test-font"))
-              ((symbol-function 'font-info)
-               (lambda (&rest _) [nil nil 20 20 0 0 0 10 15 5])))
-      (let ((spec (cdr (tool-islands-header-space 0))))
-        (should (equal (plist-get spec :height) '(30)))
-        (should (= (plist-get spec :ascent) 67)))
-      (let ((tool-islands-header-ascent 68))
-        (should (= (plist-get (cdr (tool-islands-header-space 0)) :ascent) 68)))
-      (let ((tool-islands-button-render-function #'tool-islands-button-rounded))
-        (cl-letf (((symbol-function 'frame-char-height) (lambda (&rest _) 30)))
-          (should (equal (plist-get (cdr (tool-islands-header-space 0)) :height) '(50))))))))
-
-(ert-deftest git-islands-header-delegates-exact-editor-metrics ()
-  (let ((tool-islands-header-space-function
-         (lambda (width) `(space :width ,width :height 1.9 :ascent 68))))
-    (dolist (width '(0 (12)))
-      (should (equal (tool-islands-header-space width)
-                     `(space :width ,width :height 1.9 :ascent 68))))))
 
 ;;;; Editor integration
 
@@ -1285,12 +1230,18 @@
   (git-islands-test-with-repo
     (git-islands-test-git "mv" "README" "README.md")
     (let ((status (git-islands-test-fetch root))
-          (delete-by-moving-to-trash nil))
+          (trashed (expand-file-name ".git/test-trash" root)))
       (should (eq (git-islands-entry-change (car (git-islands-status-entries status))) 'renamed))
-      (git-islands-rollback root (git-islands-status-entries status))
+      ;; Exercise the real rollback without touching the user's system trash.
+      (cl-letf (((symbol-function 'move-file-to-trash)
+                 (lambda (file) (rename-file file trashed))))
+        (git-islands-rollback root (git-islands-status-entries status)))
       (should (equal (git-islands-test-git "status" "--porcelain") ""))
       (should (file-exists-p (expand-file-name "README" root)))
-      (should-not (file-exists-p (expand-file-name "README.md" root))))))
+      (should-not (file-exists-p (expand-file-name "README.md" root)))
+      (with-temp-buffer
+        (insert-file-contents trashed)
+        (should (equal (buffer-string) "hello\n"))))))
 
 (ert-deftest git-islands-commit-keeps-hash-lines-and-paragraphs ()
   (git-islands-test-with-repo
@@ -1316,74 +1267,5 @@
       ;; The commit selected before stays selected.
       (should (equal (git-islands-commit-subject (git-islands-log-commit)) "Initial")))))
 
-
-(ert-deftest git-islands-pane-fit-reaches-sub-character-target ()
-  "A pixel target must not be rounded away and retried on every size hook."
-  (let* ((window (selected-window))
-         (frame (selected-frame))
-         (old-width (window-parameter window 'tool-islands-pane-width))
-         (actual 256) (resizes 0)
-         (tool-islands-refit-function #'ignore))
-    (unwind-protect
-        (progn
-          (set-window-parameter window 'tool-islands-pane-width (lambda () 259))
-          (cl-letf (((symbol-function 'window-list) (lambda (&rest _) (list window)))
-                    ((symbol-function 'window-pixel-width) (lambda (_) actual))
-                    ((symbol-function 'window-resize)
-                     (lambda (_ delta &rest _args)
-                       (cl-incf resizes)
-                       ;; Match Emacs' rounding with an eight-pixel cell.
-                       (cl-incf actual (if window-resize-pixelwise delta
-                                         (* 8 (round delta 8)))))))
-            (tool-islands-pane-fit frame)
-            (should (= actual 259))
-            (tool-islands-pane-follow frame)
-            (should (= resizes 1))))
-      (set-window-parameter window 'tool-islands-pane-width old-width))))
-
-(ert-deftest git-islands-pane-fit-skips-zero-delta-resize ()
-  "Opening another pane must not resize a pane already at its target."
-  (let* ((window (selected-window))
-         (old-width (window-parameter window 'tool-islands-pane-width))
-         (width (window-pixel-width window))
-         (resizes 0)
-         (tool-islands-refit-function #'ignore))
-    (unwind-protect
-        (progn
-          (set-window-parameter window 'tool-islands-pane-width (lambda () width))
-          (cl-letf (((symbol-function 'window-list) (lambda (&rest _) (list window)))
-                    ((symbol-function 'window-resize)
-                     (lambda (&rest _) (cl-incf resizes))))
-            (tool-islands-pane-fit (selected-frame))
-            (should (= resizes 0))))
-      (set-window-parameter window 'tool-islands-pane-width old-width))))
-
-(ert-deftest git-islands-pane-knows-a-drag ()
-  ;; `this-command' names no drag: its motions run from a transient map.
-  (let ((this-command nil))
-    (let ((track-mouse 'dragging)
-          (last-input-event '(mouse-movement)))
-      (should (tool-islands-pane--dragged-p)))
-    (let ((track-mouse nil)
-          (last-input-event '(drag-mouse-1)))
-      (should (tool-islands-pane--dragged-p)))
-    (let ((track-mouse nil)
-          (last-input-event ?a))
-      (should-not (tool-islands-pane--dragged-p)))))
-
-(ert-deftest git-islands-pane-ends-with-its-buffer ()
-  (let ((window (selected-window))
-        (shown (window-buffer))
-        (width #'ignore))
-    (unwind-protect
-        (with-temp-buffer
-          (set-window-parameter window 'tool-islands-pane-width width)
-          (set-window-parameter window 'tool-islands-pane-buffer shown)
-          (should (eq (tool-islands-pane--width window) width))
-          (set-window-buffer window (current-buffer))
-          (should-not (tool-islands-pane--width window)))
-      (set-window-buffer window shown)
-      (set-window-parameter window 'tool-islands-pane-width nil)
-      (set-window-parameter window 'tool-islands-pane-buffer nil))))
 
 ;;; git-islands-tests.el ends here

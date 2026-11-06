@@ -12,10 +12,10 @@ LOAD_PATH = -L . -L test \
 all: compile test
 
 test:
-	$(EMACS) -Q --batch $(LOAD_PATH) -l test/git-islands-tests.el -f ert-run-tests-batch-and-exit
+	$(EMACS) -Q --batch --eval '(setq load-prefer-newer t)' $(LOAD_PATH) -l test/git-islands-tests.el -f ert-run-tests-batch-and-exit
 
 compile:
-	$(EMACS) -Q --batch $(LOAD_PATH) \
+	$(EMACS) -Q --batch --eval '(setq load-prefer-newer t)' $(LOAD_PATH) \
 	  --eval '(setq byte-compile-error-on-warn t)' \
 	  -f batch-byte-compile git-islands*.el
 
