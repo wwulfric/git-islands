@@ -309,10 +309,8 @@ rendered content automatically. See each variable's docstring for details.
 with a repository root when its status changes. `git-islands-status` returns the
 latest snapshot for a file tree or status bar. Styling does not require this hook.
 
-Git views depend directly on `tool-islands`. The legacy `git-islands-ui`
-feature is no longer loaded by the views. Configurations using its obsolete
-names should migrate to `tool-islands` names, or explicitly
-`(require 'git-islands-ui)` while migrating.
+Git views depend directly on `tool-islands`; use its functions, variables and
+faces when customizing shared UI pieces.
 
 ## Development
 
