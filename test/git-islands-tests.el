@@ -22,6 +22,11 @@
 (require 'git-islands-merge3)
 (require 'git-islands-changelists)
 
+(ert-deftest git-islands-loads-without-legacy-ui-aliases ()
+  "The Git views use tool-islands directly; compatibility is opt-in."
+  (should (featurep 'tool-islands))
+  (should-not (featurep 'git-islands-ui)))
+
 (ert-deftest git-islands-headers-share-style-and-restore-remapping ()
   (dolist (mode '(git-islands-commit-mode git-islands-message-mode
                   git-islands-log-mode git-islands-details-mode git-islands-refs-mode))

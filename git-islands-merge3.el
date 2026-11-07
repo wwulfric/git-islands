@@ -20,7 +20,7 @@
 (require 'git-islands-core)
 (require 'git-islands-faces)
 (require 'git-islands-env)
-(require 'git-islands-ui)
+(require 'tool-islands)
 
 (declare-function git-islands-diff-blob "git-islands-diff" (root rev path))
 (declare-function git-islands-diff-blob-buffer "git-islands-diff" (label root path text))

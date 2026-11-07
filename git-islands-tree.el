@@ -21,7 +21,7 @@
 (require 'git-islands-core)
 (require 'git-islands-faces)
 (require 'git-islands-env)
-(require 'git-islands-ui)
+(require 'tool-islands)
 
 ;;;; Faces
 
