@@ -188,6 +188,9 @@ LINE is on the left side if FROM-LEFT, else on the right side."
   saved-header)         ; (LOCAL . VALUE) of the right buffer's header line
 
 (defvar-local git-islands-diff-current nil "The diff session this buffer belongs to.")
+(defvar-local git-islands-diff--header-cache nil
+  "Last header inputs and rendered toolbar for this diff buffer.")
+
 (defvar git-islands-diff-syncing nil "Non-nil while one side scrolls the other.")
 
 (defvar git-islands-diff-mode-map
@@ -265,6 +268,7 @@ A diff is one editor tab, as in IntelliJ, not the editor's whole strip."
     (remove-hook 'window-scroll-functions #'git-islands-diff-scrolled t)
     (remove-hook 'after-change-functions #'git-islands-diff-changed t)
     (remove-hook 'kill-buffer-hook #'git-islands-diff-killed t)
+    (setq git-islands-diff--header-cache nil)
     (tool-islands-header-style nil)
     (kill-local-variable 'minor-mode-overriding-map-alist)))
 
@@ -1057,9 +1061,29 @@ Together the headers make IntelliJ's diff toolbar: the left side moves
 between differences, the right side switches the viewer, the file and
 closes; the unified viewer's header has all of these."
   (let* ((session git-islands-diff-current)
-         (width (max 0 (- (window-body-width nil t) 24
-                          (tool-islands-line-end-inset))))
-         (unified (eq side 'unified))
+         (inset (tool-islands-line-end-inset))
+         (width (max 0 (- (window-body-width nil t) 24 inset)))
+         (position (and side (>= width 260) (git-islands-diff-position session)))
+         (spacer (tool-islands-header-space '(12)))
+         ;; Pixel scrolling evaluates both headers several times per event.
+         ;; Reuse their measured strings and button keymaps while inputs match.
+         (key (list side width inset position spacer
+                    (git-islands-diff-session-path session)
+                    (git-islands-diff-session-left-label session)
+                    (git-islands-diff-session-right-label session)
+                    (and (git-islands-diff-session-step session) t) buffer-read-only
+                    (selected-frame) (frame-parameter nil 'font)
+                    (frame-parameter nil 'background-mode) custom-enabled-themes
+                    face-remapping-alist expui-icons-style expui-icons-background
+                    expui-icons-height expui-icons-text-fallback)))
+    (unless (equal key (car git-islands-diff--header-cache))
+      (setq git-islands-diff--header-cache
+            (cons key (git-islands-diff-render-header session side width position spacer))))
+    (cdr git-islands-diff--header-cache)))
+
+(defun git-islands-diff-render-header (session side width position spacer)
+  "Build SESSION's header for SIDE at WIDTH, with POSITION text and SPACER."
+  (let* ((unified (eq side 'unified))
          (left (and side (not unified)))
          (label (cond (unified (concat (git-islands-diff-session-left-label session) " → "
                                        (git-islands-diff-session-right-label session)))
@@ -1080,7 +1104,7 @@ closes; the unified viewer's header has all of these."
                         ("general/down" git-islands-diff-next "Next Difference (F7)"))))
                    (when (>= width 260)
                      (concat (tool-islands-space 10)
-                             (tool-islands-ui-text (git-islands-diff-position session) 'tool-islands-dim))))))
+                             (tool-islands-ui-text position 'tool-islands-dim))))))
          (others (when (or unified (not left))
                    (git-islands-diff-buttons
                     (append
@@ -1098,7 +1122,7 @@ closes; the unified viewer's header has all of these."
                      '(("general/close" git-islands-diff-quit "Close (C-c C-k)"))))))
          (actions (concat moves (and moves others (tool-islands-space 16)) others))
          (room (max 0 (- width (string-pixel-width actions) 12))))
-    (concat (propertize " " 'display (tool-islands-header-space '(12)))
+    (concat (propertize " " 'display spacer)
             (git-islands-diff-header-fit title room)
             (tool-islands-at-right actions (tool-islands-line-end)))))
 
