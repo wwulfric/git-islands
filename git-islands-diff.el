@@ -566,24 +566,57 @@ The unified viewer's own rendering is no edit."
 
 ;;;; Scrolling together
 
+(defun git-islands-diff-peer (session window)
+  "Return the live window showing the other side of SESSION from WINDOW."
+  (pcase (git-islands-diff-session-windows session)
+    (`(,left ,right)
+     (when (and (window-live-p left) (window-live-p right)
+                (eq (window-buffer left) (git-islands-diff-session-left session))
+                (eq (window-buffer right) (git-islands-diff-session-right session)))
+       (cond ((eq window left) right) ((eq window right) left))))))
+
+(defun git-islands-diff-pixel-scroll (scroll delta)
+  "Apply SCROLL by DELTA pixels to both aligned panes of a diff."
+  (let* ((window (selected-window))
+         (peer (and git-islands-diff-current
+                    (git-islands-diff-peer git-islands-diff-current window))))
+    (if (not peer)
+        (funcall scroll delta)
+      (let ((git-islands-diff-syncing t))
+        (unwind-protect
+            (progn
+              (funcall scroll delta)
+              (with-selected-window peer
+                (condition-case nil
+                    (funcall scroll delta)
+                  ((beginning-of-buffer end-of-buffer) nil))))
+          ;; Redisplay may report these starts after the dynamic guard ends.
+          ;; A second, line-based sync would discard the offset into a filler.
+          (dolist (side (list window peer))
+            (set-window-parameter side 'git-islands-diff-synced-start
+                                  (window-start side))))))))
+
+(with-eval-after-load 'pixel-scroll
+  (dolist (scroll '(pixel-scroll-precision-scroll-up pixel-scroll-precision-scroll-down))
+    (advice-add scroll :around #'git-islands-diff-pixel-scroll)))
+
 (defun git-islands-diff-scrolled (window start)
   "Scroll the other side of WINDOW's diff to face START."
-  (when-let* ((session git-islands-diff-current))
-    (unless git-islands-diff-syncing
-      (let* ((from-left (eq (current-buffer) (git-islands-diff-session-left session)))
-             (other (seq-find (lambda (other)
-                                (and (window-live-p other) (not (eq other window))))
-                              (git-islands-diff-session-windows session))))
-        (when other
-          (let* ((line (line-number-at-pos start t))
-                 (target (git-islands-diff-map-line (git-islands-diff-session-hunks session)
-                                                    line from-left))
-                 (git-islands-diff-syncing t))
-            (with-current-buffer (window-buffer other)
-              (let ((position (git-islands-diff-line-position target)))
-                (set-window-start other position t)
-                ;; Redisplay would scroll back to show the window's point.
-                (set-window-point other position)))))))))
+  (when-let* ((session git-islands-diff-current)
+              ((not git-islands-diff-syncing))
+              ((not (equal start (window-parameter window 'git-islands-diff-synced-start))))
+              (other (git-islands-diff-peer session window)))
+    (set-window-parameter window 'git-islands-diff-synced-start nil)
+    (let* ((from-left (eq (current-buffer) (git-islands-diff-session-left session)))
+           (target (git-islands-diff-map-line (git-islands-diff-session-hunks session)
+                                              (line-number-at-pos start t) from-left))
+           (git-islands-diff-syncing t))
+      (with-current-buffer (window-buffer other)
+        (let ((position (git-islands-diff-line-position target)))
+          (unless (= position (window-start other))
+            (set-window-parameter other 'git-islands-diff-synced-start position)
+            (set-window-start other position t)
+            (set-window-point other position)))))))
 
 ;;;; Navigation and actions
 
@@ -969,6 +1002,7 @@ Point goes to HUNK, or to the first difference."
         (set-window-buffer right-window right)
         (setf (git-islands-diff-session-windows session) (list left-window right-window))
         (dolist (window (list left-window right-window))
+          (set-window-parameter window 'git-islands-diff-synced-start nil)
           (with-current-buffer (window-buffer window)
             (set-window-margins window left-margin-width right-margin-width)))
         (select-window right-window)

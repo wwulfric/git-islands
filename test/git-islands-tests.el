@@ -826,7 +826,14 @@
         (with-current-buffer right
           (git-islands-diff-scrolled right-window (git-islands-diff-line-position 6)))
         (with-current-buffer left
-          (should (= (line-number-at-pos (window-start left-window)) 5)))
+          (should (= (line-number-at-pos (window-start left-window)) 5))
+          ;; A delayed notification from the shorter side cannot map a
+          ;; filler back to the exact source row.  Leave the driver alone.
+          (let ((start (window-start right-window))
+                (point (window-point right-window)))
+            (git-islands-diff-scrolled left-window (window-start left-window))
+            (should (= start (window-start right-window)))
+            (should (= point (window-point right-window)))))
         (with-current-buffer right
           (git-islands-diff-scrolled right-window (git-islands-diff-line-position 2)))
         (with-current-buffer left
